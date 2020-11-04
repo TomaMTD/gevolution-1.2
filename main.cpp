@@ -55,6 +55,9 @@
 #ifdef ICGEN_FALCONIC
 #include "fcn/togevolution.hpp"
 #endif
+#ifdef ICGEN_SONG
+#include "ic_2ndorder.hpp"
+#endif
 #include "radiation.hpp"
 #include "parser.hpp"
 #include "output.hpp"
@@ -303,6 +306,10 @@ int main(int argc, char **argv)
 #ifdef ICGEN_FALCONIC
 	else if (ic.generator == ICGEN_FALCONIC)
 		maxvel[0] = generateIC_FalconIC(sim, ic, cosmo, fourpiG, dtau, &pcls_cdm, pcls_ncdm, maxvel+1, &phi, &source, &chi, &Bi, &source, &Sij, &scalarFT, &BiFT, &SijFT, &plan_phi, &plan_source, &plan_chi, &plan_Bi, &plan_source, &plan_Sij);
+#endif
+#ifdef ICGEN_SONG
+	else if (ic.generator == ICGEN_SONG)
+		generateIC_2ndorder(sim, ic, cosmo, fourpiG, &pcls_cdm, &pcls_b, pcls_ncdm, maxvel, &phi, &chi, &Bi, &source, &Sij, &scalarFT, &BiFT, &SijFT, &plan_phi, &plan_chi, &plan_Bi, &plan_source, &plan_Sij, params, numparam);
 #endif
 	else
 	{

@@ -772,6 +772,9 @@ int parseMetadata(parameter * & params, const int numparam, metadata & sim, cosm
 	ic.metricfile[0][0] = '\0';
 	ic.metricfile[1][0] = '\0';
 	ic.metricfile[2][0] = '\0';
+	ic.displacementfile[0] = '\0';
+	ic.velocityfile[0][0] = '\0';
+	ic.velocityfile[1][0] = '\0';
 	ic.seed = 0;
 	ic.flags = 0;
 	ic.z_ic = -2.;
@@ -1089,6 +1092,15 @@ int parseMetadata(parameter * & params, const int numparam, metadata & sim, cosm
 		}
 		
 		parseParameter(params, numparam, "prevolution Courant factor", ic.Cf);
+	}
+#endif
+#ifdef ICGEN_SONG
+	else if (ic.generator = ICGEN_SONG)
+	{
+		parseParameter(params, numparam, "displacement file", ic.displacementfile);
+		for (i = 0; i < 2; i++)
+			pptr[i] = ic.velocityfile[i];
+		parseParameter(params, numparam, "velocity file", pptr, i);
 	}
 #endif
 

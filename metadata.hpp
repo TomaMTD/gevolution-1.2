@@ -253,6 +253,8 @@ struct icsettings
 	char pkfile[PARAM_MAX_LENGTH];
 	char tkfile[PARAM_MAX_LENGTH];
 	char metricfile[3][PARAM_MAX_LENGTH];
+	char displacementfile[PARAM_MAX_LENGTH];
+	char velocityfile[2][PARAM_MAX_LENGTH];
 	double restart_tau;
 	double restart_dtau;
 	double restart_version;
