@@ -1095,12 +1095,15 @@ int parseMetadata(parameter * & params, const int numparam, metadata & sim, cosm
 	}
 #endif
 #ifdef ICGEN_SONG
-	else if (ic.generator = ICGEN_SONG)
+	else if (ic.generator == ICGEN_SONG)
 	{
 		parseParameter(params, numparam, "displacement file", ic.displacementfile);
 		for (i = 0; i < 2; i++)
 			pptr[i] = ic.velocityfile[i];
 		parseParameter(params, numparam, "velocity file", pptr, i);
+		for (i = 0; i < 3; i++)
+			pptr[i] = ic.metricfile[i];
+		parseParameter(params, numparam, "metric file", pptr, i);
 	}
 #endif
 
