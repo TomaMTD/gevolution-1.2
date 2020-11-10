@@ -28,7 +28,7 @@ void displace_pcls_ic_2ndorder(double coeff, double lat_resolution, part_simple 
 	gradxi[1] /= lat_resolution;
 	gradxi[2] /= lat_resolution;
 	
-	for (i = 0; i < 3; i++) ref_dist[i] += coeff*gradxi[i]/lat_resolution;
+	for (int j = 0; j < 3; j++) ref_dist[j] += coeff*gradxi[j]/lat_resolution;
 	
 	gradxi[0] = (1.-ref_dist[1]) * (1.-ref_dist[2]) * ((*fields[i])(sites[i]+0) - (*fields[i])(sites[i]));
 	gradxi[1] = (1.-ref_dist[0]) * (1.-ref_dist[2]) * ((*fields[i])(sites[i]+1) - (*fields[i])(sites[i]));
@@ -502,7 +502,7 @@ void generateIC_2ndorder(metadata & sim, icsettings & ic, cosmology & cosmo, con
 		phi->loadHDF5(filename);
 		chi->loadHDF5(filename);
 		phi->updateHalo();
-		chi->updateHalo();	
+		chi->updateHalo();
 		
 		if (sim.baryon_flag == 3)	// baryon treatment = hybrid; set velocities using both velocity potentials
 			maxvel[0] = pcls_cdm->updateVel(initialize_q_ic_basic, 1., ic_fields, 2) / a;
