@@ -53,6 +53,43 @@ void displace_pcls_ic_2ndorder(double coeff, double lat_resolution, part_simple 
 	for (i = 0; i < 3; i++) (*part).pos[i] += coeff*gradxi[i];
 }
 
+Real initialize_q_ic_2ndorder(double coeff, double lat_resolution, part_simple * part, double * ref_dist, part_simple_info partInfo, Field<Real> ** fields, Site * sites, int nfield, double * params, double * outputs, int noutputs)
+{
+	Real B[3] = {0, 0, 0};
+	Real phi = 0.;
+	Real v2 = 0.;
+	
+	B[0] = (1.-ref_dist[1]) * (1.-ref_dist[2]) * (*fields[1])(sites[1],0);
+	B[1] = (1.-ref_dist[0]) * (1.-ref_dist[2]) * (*fields[1])(sites[1],1);
+	B[2] = (1.-ref_dist[0]) * (1.-ref_dist[1]) * (*fields[1])(sites[1],2);
+	B[0] += ref_dist[1] * (1.-ref_dist[2]) * (*fields[1])(sites[1]+1,0);
+	B[1] += ref_dist[0] * (1.-ref_dist[2]) * (*fields[1])(sites[1]+0,1);
+	B[2] += ref_dist[0] * (1.-ref_dist[1]) * (*fields[1])(sites[1]+0,2);
+	B[0] += (1.-ref_dist[1]) * ref_dist[2] * (*fields[1])(sites[1]+2,0);
+	B[1] += (1.-ref_dist[0]) * ref_dist[2] * (*fields[1])(sites[1]+2,1);
+	B[2] += (1.-ref_dist[0]) * ref_dist[1] * (*fields[1])(sites[1]+1,2);
+	B[0] += ref_dist[1] * ref_dist[2] * (*fields[1])(sites[1]+2+1,0);
+	B[1] += ref_dist[0] * ref_dist[2] * (*fields[1])(sites[1]+2+0,1);
+	B[2] += ref_dist[0] * ref_dist[1] * (*fields[1])(sites[1]+1+0,2);
+	
+	phi = (1.-ref_dist[0]) * (1.-ref_dist[1]) * (1.-ref_dist[2]) * (*fields[0])(sites[0]);
+	phi += ref_dist[0] * (1.-ref_dist[1]) * (1.-ref_dist[2]) * (*fields[0])(sites[0]+0);
+	phi += (1.-ref_dist[0]) * ref_dist[1] * (1.-ref_dist[2]) * (*fields[0])(sites[0]+1);
+	phi += ref_dist[0] * ref_dist[1] * (1.-ref_dist[2]) * (*fields[0])(sites[0]+1+0);
+	phi += (1.-ref_dist[0]) * (1.-ref_dist[1]) * ref_dist[2] * (*fields[0])(sites[0]+2);
+	phi += ref_dist[0] * (1.-ref_dist[1]) * ref_dist[2] * (*fields[0])(sites[0]+2+0);
+	phi += (1.-ref_dist[0]) * ref_dist[1] * ref_dist[2] * (*fields[0])(sites[0]+2+1);
+	phi += ref_dist[0] * ref_dist[1] * ref_dist[2] * (*fields[0])(sites[0]+2+1+0);
+	
+	for (int i = 0 ; i < 3; i++)
+	{
+		(*part).vel[i] -= 3. * phi * (*part).vel[i] + B[i] * coeff;
+		v2 += (*part).vel[i] * (*part).vel[i];
+	}
+	
+	return v2;
+}
+
 
 void generateIC_2ndorder(metadata & sim, icsettings & ic, cosmology & cosmo, const double fourpiG, Particles<part_simple,part_simple_info,part_simple_dataType> * pcls_cdm, Particles<part_simple,part_simple_info,part_simple_dataType> * pcls_b, Particles<part_simple,part_simple_info,part_simple_dataType> * pcls_ncdm, double * maxvel, Field<Real> * phi, Field<Real> * chi, Field<Real> * Bi, Field<Real> * source, Field<Real> * Sij, Field<Cplx> * scalarFT, Field<Cplx> * BiFT, Field<Cplx> * SijFT, PlanFFT<Cplx> * plan_phi, PlanFFT<Cplx> * plan_chi, PlanFFT<Cplx> * plan_Bi, PlanFFT<Cplx> * plan_source, PlanFFT<Cplx> * plan_Sij, parameter * params, int & numparam)
 {
@@ -84,8 +121,8 @@ void generateIC_2ndorder(metadata & sim, icsettings & ic, cosmology & cosmo, con
 	Field<Real> * ic_fields[2];
 	string filename;
 	
-	ic_fields[0] = chi;
-	ic_fields[1] = phi;
+	ic_fields[0] = phi;
+	ic_fields[1] = chi;
 
 #ifdef HAVE_CLASS
   	background class_background;
@@ -505,12 +542,12 @@ void generateIC_2ndorder(metadata & sim, icsettings & ic, cosmology & cosmo, con
 		chi->updateHalo();
 		
 		if (sim.baryon_flag == 3)	// baryon treatment = hybrid; set velocities using both velocity potentials
-			maxvel[0] = pcls_cdm->updateVel(initialize_q_ic_basic, 1./sim.boxsize, ic_fields, 2) / a;
+			maxvel[0] = pcls_cdm->updateVel(initialize_q_ic_basic, -a/sim.boxsize, ic_fields, 2) / a;
 		else
-			maxvel[0] = pcls_cdm->updateVel(initialize_q_ic_basic, 1./sim.boxsize, &chi, 1) / a;	// set CDM velocities
+			maxvel[0] = pcls_cdm->updateVel(initialize_q_ic_basic, -a/sim.boxsize, &chi, 1) / a;	// set CDM velocities
 		
 		if (sim.baryon_flag == 1)
-			maxvel[1] = pcls_b->updateVel(initialize_q_ic_basic, 1./sim.boxsize, &phi, 1) / a;	// set baryon velocities
+			maxvel[1] = pcls_b->updateVel(initialize_q_ic_basic, -a/sim.boxsize, &phi, 1) / a;	// set baryon velocities
 	}
 	
 	if (sim.baryon_flag > 1) sim.baryon_flag = 0;
@@ -707,6 +744,13 @@ void generateIC_2ndorder(metadata & sim, icsettings & ic, cosmology & cosmo, con
 	projectFTvector(*BiFT, *BiFT, fourpiG / (double) sim.numpts / (double) sim.numpts);	
 	plan_Bi->execute(FFT_BACKWARD);	
 	Bi->updateHalo();	// B initialized
+	
+	ic_fields[1] = Bi;
+	
+	maxvel[0] = pcls_cdm->updateVel(initialize_q_ic_2ndorder, 1./(a*sim.numpts), ic_fields, 2) / a;
+	
+	if (sim.baryon_flag == 1)
+			maxvel[1] = pcls_b->updateVel(initialize_q_ic_2ndorder, 1./(a*sim.numpts), ic_fields, 2) / a;
 	
 	projection_init(Sij);
 	projection_Tij_project(pcls_cdm, Sij, a, phi);
