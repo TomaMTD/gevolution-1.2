@@ -430,9 +430,9 @@ void generateIC_2ndorder(metadata & sim, icsettings & ic, cosmology & cosmo, con
 	initializeParticlePositions(sim.numpcl[0], pcldata, ic.numtile[0], *pcls_cdm);
 	i = MAX;
 	if (sim.baryon_flag == 3)	// baryon treatment = hybrid; displace particles using both displacement fields
-		pcls_cdm->moveParticles(displace_pcls_ic_2ndorder, 1., ic_fields, 2, NULL, &max_displacement, &i, 1);
+		pcls_cdm->moveParticles(displace_pcls_ic_2ndorder, 1./sim.boxsize/sim.boxsize, ic_fields, 2, NULL, &max_displacement, &i, 1);
 	else
-		pcls_cdm->moveParticles(displace_pcls_ic_2ndorder, 1., &chi, 1, NULL, &max_displacement, &i, 1);	// displace CDM particles
+		pcls_cdm->moveParticles(displace_pcls_ic_2ndorder, 1./sim.boxsize/sim.boxsize, &chi, 1, NULL, &max_displacement, &i, 1);	// displace CDM particles
 	
 	sim.numpcl[0] *= (long) ic.numtile[0] * (long) ic.numtile[0] * (long) ic.numtile[0];
 	
@@ -468,7 +468,7 @@ void generateIC_2ndorder(metadata & sim, icsettings & ic, cosmology & cosmo, con
 	
 		initializeParticlePositions(sim.numpcl[1], pcldata, ic.numtile[1], *pcls_b);
 		i = MAX;
-		pcls_b->moveParticles(displace_pcls_ic_2ndorder, 1., &phi, 1, NULL, &max_displacement, &i, 1);	// displace baryon particles
+		pcls_b->moveParticles(displace_pcls_ic_2ndorder, 1./sim.boxsize/sim.boxsize, &phi, 1, NULL, &max_displacement, &i, 1);	// displace baryon particles
 	
 		sim.numpcl[1] *= (long) ic.numtile[1] * (long) ic.numtile[1] * (long) ic.numtile[1];
 	
@@ -505,12 +505,12 @@ void generateIC_2ndorder(metadata & sim, icsettings & ic, cosmology & cosmo, con
 		chi->updateHalo();
 		
 		if (sim.baryon_flag == 3)	// baryon treatment = hybrid; set velocities using both velocity potentials
-			maxvel[0] = pcls_cdm->updateVel(initialize_q_ic_basic, 1., ic_fields, 2) / a;
+			maxvel[0] = pcls_cdm->updateVel(initialize_q_ic_basic, 1./sim.boxsize, ic_fields, 2) / a;
 		else
-			maxvel[0] = pcls_cdm->updateVel(initialize_q_ic_basic, 1., &chi, 1) / a;	// set CDM velocities
+			maxvel[0] = pcls_cdm->updateVel(initialize_q_ic_basic, 1./sim.boxsize, &chi, 1) / a;	// set CDM velocities
 		
 		if (sim.baryon_flag == 1)
-			maxvel[1] = pcls_b->updateVel(initialize_q_ic_basic, 1., &phi, 1) / a;	// set baryon velocities
+			maxvel[1] = pcls_b->updateVel(initialize_q_ic_basic, 1./sim.boxsize, &phi, 1) / a;	// set baryon velocities
 	}
 	
 	if (sim.baryon_flag > 1) sim.baryon_flag = 0;
