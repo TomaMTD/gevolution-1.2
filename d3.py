@@ -10,8 +10,9 @@ import numpy as np
 import os
 import sys
 from numba import jit,prange
-song_path='/home/thomas/song/'         # set your one path 
-sys.path.insert(0, song_path+'python') # path to python module of song
+song_path='/home/thomas/song/'                  # set your one path to song
+gev_path ='/home/thomas/song/gevolution-1.2/'   # set your one path to gevolution
+sys.path.insert(0, song_path+'python')          # path to python module of song
 import songy as s
 import h5py
 
@@ -94,18 +95,24 @@ k_max_custom_song = {}
 k_size_custom_song = {}"""
 
     k_modulus_max=2*kmax
+
+    ini="./m{}matter.ini".format(N)
+    pre="./m{}matter.pre".format(N)
     
-    file = open("./mmatter.ini", "w")
+    file = open(ini, "w")
     if len(z_song)>1: file.write(ini_file.format(A_s,n_s,h,omega_b*h**2,omega_cdm*h**2,omega_k,fnl,str(z_song[0])+','+str(z_song[1])))
     else: file.write(ini_file.format(A_s,n_s,h,omega_b*h**2,omega_cdm*h**2,omega_k,fnl,z))
     file.close()
 
-    file = open("./mmatter.pre", "w")
+    file = open(pre, "w")
     file.write(pre_file.format(opt,N,opt,kmin,k_modulus_max,int(N*2)))
     file.close()
 
     from subprocess import call
-    call(['./song', './mmatter.ini', './mmatter.pre'])
+    call(['./song', ini, pre])
+
+    os.system("cp "+song_path+'output/sources_song_z000.dat '+song_path+"output/sources_song_z000_N{}.dat".format(N))
+    os.system("cp "+song_path+'output/sources_song_z001.dat '+song_path+"output/sources_song_z001_N{}.dat".format(N))
 
 def song_output(kmax,kmin,N,opt,filename='sources_song_z000.dat'):
     ''' Once song has run, this function load the output by using  
@@ -124,8 +131,8 @@ def song_output(kmax,kmin,N,opt,filename='sources_song_z000.dat'):
         print(song_path+'output/sources_song_z000.dat not found')
         print('Run song ...')
         run_song(kmax,kmin,N,opt)
-
     song=s.FixedTauFile(song_path+'output/'+filename)
+
     if len(song.k1)!=2*N:
         print('The output '+song_path+'output/ found does not not has the right shape')
         print('Run song ...')
@@ -136,81 +143,14 @@ def song_output(kmax,kmin,N,opt,filename='sources_song_z000.dat'):
     dk3=np.diff(song.k3)[:,0]
     return np.array(song.get_source(b'delta_cdm')),song.tau,song.k1,np.array(song.k2,dtype=object),np.array(song.k3),song.flatidx,dk12,dk3
 
-def song_main(kmax,kmin,N,opt,filename=['sources_song_z000.dat','sources_song_z001.dat']):
-    '''Main function for SONG
-        '''
-    source,tau,k1,k2,k3,flatidx,dk12,dk3=song_output(kmax,kmin,N,opt,filename[0])
-    try:
-        source1,tau1,_,_,_,_,_,_=song_output(kmax,kmin,N,opt,filename[1])
-        return source,k1/h,k2/h,k3/h,flatidx,dk12/h,dk3/h,source1,tau1-tau
-    except IndexError:
-        return source,k1/h,k2/h,k3/h,flatidx,dk12/h,dk3/h
+def song_main(kmax,kmin,N,opt):
+    '''Main function for SONG '''
 
-####################################################################################### 
-####################################################################################### Gevolution place
-
-def settings(kmin,ICg='SONG',disp_file='displacement.h5',vel_file='velocitypotential.h5',pot_file='phi.h5'):
-    '''create a setting file with the global parameters used in the programme'''
-    setx=r"""
-template file = sc1_crystal.dat    
-Tk file = class_tk.dat              
-baryon treatment = blend          
-seed = 42                         
-correct displacement = yes       
-k-domain = cube                
-Courant factor      = 48.0  
-T_cmb       = 2.7255
-N_ur        = 3.046
-time step limit     = 0.04         
-gravity theory      = GR            
-vector method       = parabolic    
-output path         = output/
-generic file base   = lcdm
-snapshot file base  = lcdm_snap
-snapshot redshifts  = 30, 10, 3, 0
-snapshot outputs    = phi, B, Gadget2
-Pk file base        = lcdm_pk
-Pk redshifts        = 50, 30, 10, 3, 1, 0
-Pk outputs          = phi, B, chi, hij
-Pk bins             = 1024
-lightcone file base = lcdm_lightcone
-lightcone outputs   = Gadget2, phi
-lightcone 0 vertex    = 0, 0, 0       # in units of Mpc/h
-lightcone 0 direction = 1, 1, 1
-lightcone 0 distance  = 100           # in units of Mpc/h
-lightcone 1 vertex    = 0, 0, 0       # in units of Mpc/h
-lightcone 1 direction = 1, 1, 1
-lightcone 1 distance  = 100, 450      # in units of Mpc/h
-lightcone 1 opening half-angle = 30   # degrees
-output              = mPk, dTk, vTk
-gauge               = Newtonian
-P_k_ini type        = analytic_Pk
-P_k_max_h/Mpc       = 192           # has to be large enough (otherwise IC generator may crash)
-z_pk                = 100           # should be equal to initial reshift
-root                = class_
-background_verbose  = 1
-spectra_verbose     = 1
-output_verbose      = 1
-
-IC generator      = {}
-displacement file = {}
-velocity file     = {}
-metric file       = {}
-tiling factor =     {}                  
-k_pivot =           {}           
-A_s =               {}
-n_s =               {}
-h           =       {}
-omega_b     =       {}
-omega_cdm   =       {}
-initial redshift    = {}
-boxsize             = {} 
-Ngrid               = {}"""
-
-    file = open("./gevolution-1.2/msetting.ini", "w")
-    file.write(setx.format(ICg,disp_file,vel_file,pot_file,N//4,k_pivot,A_s,n_s,h,omega_b*h**2,omega_cdm*h**2\
-                            ,z,2*np.pi/kmin,N-1))
-    file.close()
+    s1="sources_song_z000_N{}.dat".format(N)
+    s2="sources_song_z001_N{}.dat".format(N)
+    source,tau,k1,k2,k3,flatidx,dk12,dk3=song_output(kmax,kmin,N,opt,s1)
+    source1,tau1,_,_,_,_,_,_=song_output(kmax,kmin,N,opt,s2)
+    return source,k1/h,k2/h,k3/h,flatidx,dk12/h,dk3/h,source1,tau1-tau
 
 ####################################################################################### 
 ####################################################################################### first order transfert fct
@@ -227,10 +167,10 @@ def trans():
     song=s.FixedTauFile(song_path+'output/sources_song_z000.dat')
     k=song.first_order_sources['k']/h
 
-    Primordial= A_s*(k/k_pivot*h)**(n_s-1)/k**3*2*np.pi**2 
-
-    tr_delta_cdm=song.first_order_sources[b'delta_cdm']
-    tr_phi=tr_delta_cdm*(-3*H**2/2) /(k**2+3*H**2)
+    Primordial= A_s*(k/k_pivot*h)**(n_s-1)/k**3*2*np.pi**2 # I have checked that 
+    tr_delta_cdm=song.first_order_sources[b'delta_cdm']    # Primordial*tr_delta_cdm**2 = CDM Power spectrum of CLASS
+    tr_phi=tr_delta_cdm*(-3*H**2/2) /(k**2+3*H**2)         #
+    np.save('myPowerSpec',np.array([k,Primordial*k**3/(2*np.pi**2) *tr_phi**2]))
 
     dk=np.diff(np.append(k,k[-1]*2-k[-2]))
     dT=np.diff(np.append(tr_phi,tr_phi[-1]*2-tr_phi[-2]))
@@ -247,28 +187,32 @@ def zeta_realisation(k_grid,Primordial):
             -interpolate transfer function and primordial power spectrum tr=T(k) and P=P(k)
             -randomly draw the real/imaginary part of the primordial curvature zeta following a Gaussian PDF with std=sqrt(P(k)/2)
         '''
+    def random (k):
+        P=np.interp(k,Primordial[0],Primordial[1])
+
+        zeta_ini_Re=np.random.normal(0,np.sqrt(P/2*(2*np.pi)**3),k.shape) # see https://nms.kcl.ac.uk/eugene.lim/AdvCos/lecture2.pdf
+        zeta_ini_Im=np.random.normal(0,np.sqrt(P/2*(2*np.pi)**3),k.shape) # for the (2pi)^3 factor (around eq 16) 
+                                                                          
+        # equivalent :
+        #rho =  np.random.normal(0,np.sqrt(P*(2*np.pi)**3),k.shape)
+        #phase = np.random.uniform(0,2*np.pi,k.shape)
+        #zeta_ini_Re=rho*np.cos(phase)
+        #zeta_ini_Im=rho*np.sin(phase)
+        return zeta_ini_Re+zeta_ini_Im*1j
+
     zeta = np.zeros((N//2+1,N,N),dtype=np.complex64)
 
     # fill density ignoring the plan z=0 (zeta[0])
     k=np.sqrt(k_grid[0]**2+k_grid[1][N//2+1:]**2+k_grid[2]**2)
-    P=np.interp(k,Primordial[0],Primordial[1])
-    zeta_ini_Re=np.random.normal(0,np.sqrt(P/2),(N//2,N,N))
-    zeta_ini_Im=np.random.normal(0,np.sqrt(P/2),(N//2,N,N))
-    zeta[1:,:,:]=(zeta_ini_Re+zeta_ini_Im*1j)
+    zeta[1:,:,:]= random (k) 
 
     # fill half of the plan z=0 ignoring the line (z=0,y=N//2)
     k=np.sqrt(k_grid[0]**2+k_grid[1][N//2+1:]**2)[:,:,0]
-    P=np.interp(k,Primordial[0],Primordial[1])
-    zeta_ini_Re_lin=np.random.normal(0,np.sqrt(P/2),(N//2,N))
-    zeta_ini_Im_lin=np.random.normal(0,np.sqrt(P/2),(N//2,N))
-    zeta[0,N//2+1:]=(zeta_ini_Re_lin+zeta_ini_Im_lin*1j)
+    zeta[0,N//2+1:]=random(k) 
 
     # fill half of the line (z=0,y=N//2)
     k=k_grid[0][0,:,0][N//2+1:]
-    P=np.interp(k,Primordial[0],Primordial[1])
-    zeta_ini_Re_lin=np.random.normal(0,np.sqrt(P/2),(N//2))
-    zeta_ini_Im_lin=np.random.normal(0,np.sqrt(P/2),(N//2))
-    zeta[0,N//2,N//2+1:]=(zeta_ini_Re_lin+zeta_ini_Im_lin*1j)
+    zeta[0,N//2,N//2+1:]=random(k) 
 
     # Impose zeta(kmax) to be real for even N output
     zeta[-1,:,:]=zeta[-1,:,:].real
@@ -405,7 +349,24 @@ def Kernel_song(kk1,kk2,kk3,K,flatidx):
         if pkk3>=30:
             pkk3=29
         out[ind]=K[flatidx[pkk1,pkk2]][pkk3]
-    return out 
+    #return out 
+    return 1
+
+def we(TT,di):
+    import pylab as plt
+    from matplotlib.colors import LogNorm
+    vu=np.zeros_like(di)
+    ind=0
+    for i in TT:
+        if i in di:
+            w=np.where(i==di)
+            vu[w]=i
+    for i in range(3):
+        plt.figure()
+        plt.imshow(np.abs(vu[i].real))
+    #plt.imshow(vu)
+    plt.show()
+    return vu
 
 ####################################################################################### 
 ####################################################################################### intergration
@@ -467,6 +428,7 @@ def I2_TT_LL(Int,N,xidx,yidx,zidx,k_modulus,k_max,zeta,kern,kern_arg1,kern_arg2)
                 zeta_pos=np.copy(zeta[kz_min_lim:kz_max_lim1,\
                                                  ky_min_lim:ky_max_lim,\
                                                 kx_min_lim:kx_max_lim]).ravel()
+
                 kk_pos_k=np.copy(k_modulus[kz_min_lim:kz_max_lim1,\
                                               ky_min_lim:ky_max_lim,\
                                               kx_min_lim:kx_max_lim]).ravel()
@@ -501,6 +463,7 @@ def I2_TT_LL(Int,N,xidx,yidx,zidx,k_modulus,k_max,zeta,kern,kern_arg1,kern_arg2)
                                              *kern_neg))*dk**3
                 else:
                     Int[kz,ky,kx]=(np.nansum(zeta_pos*zeta_pos[::-1]*kern_pos))*dk**3
+                
     return Int
 
 @jit(nopython=Nopython,fastmath=True,parallel=False)
@@ -866,19 +829,85 @@ def fft(field):
 
     return np.fft.irfftn(new_field,(N-1,N-1,N-1))
 
+####################################################################################### 
+####################################################################################### Gevolution place
+
+def settings(kmin,ICg='SONG',disp_file='displacement.h5',vel_file='velocitypotential.h5',pot_file='phi.h5'):
+    '''create a setting file with the global parameters used in the programme'''
+    setx=r"""
+template file = sc1_crystal.dat    
+Tk file = class_tk.dat              
+baryon treatment = blend          
+seed = 42                         
+correct displacement = yes       
+k-domain = cube                
+Courant factor      = 48.0  
+T_cmb       = 2.7255
+N_ur        = 3.046
+time step limit     = 0.04         
+gravity theory      = GR            
+vector method       = parabolic    
+output path         = output/
+generic file base   = lcdm
+snapshot file base  = lcdm_snap
+snapshot redshifts  = 30, 10, 3, 0
+snapshot outputs    = phi, B, Gadget2
+Pk file base        = lcdm_pk
+Pk redshifts        = 50, 30, 10, 3, 1, 0
+Pk outputs          = phi, B, chi, hij
+Pk bins             = 1024
+lightcone file base = lcdm_lightcone
+lightcone outputs   = Gadget2, phi
+lightcone 0 vertex    = 0, 0, 0       # in units of Mpc/h
+lightcone 0 direction = 1, 1, 1
+lightcone 0 distance  = 100           # in units of Mpc/h
+lightcone 1 vertex    = 0, 0, 0       # in units of Mpc/h
+lightcone 1 direction = 1, 1, 1
+lightcone 1 distance  = 100, 450      # in units of Mpc/h
+lightcone 1 opening half-angle = 30   # degrees
+output              = mPk, dTk, vTk
+gauge               = Newtonian
+P_k_ini type        = analytic_Pk
+P_k_max_h/Mpc       = 192           
+z_pk                = 100          
+root                = class_
+background_verbose  = 1
+spectra_verbose     = 1
+output_verbose      = 1
+
+IC generator      = {}
+displacement file = {}
+velocity file     = {}
+metric file       = {}
+tiling factor =     {}                  
+k_pivot =           {}           
+A_s =               {}
+n_s =               {}
+h           =       {}
+omega_b     =       {}
+omega_cdm   =       {}
+initial redshift    = {}
+boxsize             = {} 
+Ngrid               = {}"""
+
+    file = open(gev_path+"/msetting.ini", "w")
+    file.write(setx.format(ICg,disp_file,vel_file,pot_file,N//4,k_pivot,A_s,n_s,h,omega_b*h**2,omega_cdm*h**2\
+                            ,z,2*np.pi/kmin,N-1))
+    file.close()
+
+
+
 ########################################################################################################################## 
 ########################################################################################################################## 
 ########################################################################################################################## Main
 
-N=64                  # Number of mode to be considered (on laptop N=10 is quick enough)
-print('N='+str(N))    #
-kmin=np.float32(0.01) # The non-zero smallest mode  
-dk=kmin               # which has to be equal to the step of the grid
-
-klin_concat,kmax,N,dk,klambda=k_distrib(kmin,N,0.04) # Generate the list of mode coordinate (assume h/Mpc)
-
-song,k1,k2,k3,flatidx,dk12,dk3,song1,d_eta=song_main(kmax*h,kmin*h,N,'lin',\
-              ['sources_song_z000.dat','sources_song_z001.dat'])              # Get song outputs
+N=32                                                 # Number of mode to be considered (on laptop N=10 is quick enough)
+print('N='+str(N))                                   #
+kmin=np.float32(0.01)                                # The non-zero smallest mode  
+dk=kmin                                              # which has to be equal to the step of the grid
+klin_concat,kmax,N,dk,klambda=k_distrib(kmin,N,0.02) # Generate the list of mode coordinate (assume h/Mpc)
+                                                     ##########################
+song,k1,k2,k3,flatidx,dk12,dk3,song1,d_eta=song_main(kmax*h,kmin*h,N,'lin')   # Get song outputs
                                                                               #
 Primordial,transcdm,transphi,dTdk=trans()                                     # Get transfer functions and primordial power spectrum 
 k_grid_lin=np.array(np.meshgrid(klin_concat,klin_concat,\
@@ -887,39 +916,42 @@ zeta=zeta_realisation(k_grid_lin,Primordial)                                  # 
 k_grid_lin=np.array(np.meshgrid(klin_concat,klin_concat,klin_concat\
             ,sparse=True,indexing='ij'),dtype=object)                         # mode Grid with 'ij' indexing
 
-#TT =integre('TT',klin_concat,N,klambda,k_grid_lin,phi,transphi,dTdk)                 # total integrale  
-#LL =integre('LL',klin_concat,N,klambda,k_grid_lin,phi,Kernel_analytic,transphi,dTdk) # LL analytic approx int
-#SL =integre('SL',klin_concat,N,klambda,k_grid_lin,phi,Kernel_analytic,transphi,dTdk) # SL analytic approx int
-
 #################################################################################### displacement field computation
 print('displacement:')                                                             #
 xi2,phi2,_,_=song2xi(song,k1,k2,k3,flatidx)                                        # Compute the second order kernels xi2 and phi2
+#xi_TT=integre('TT',klin_concat,N,kmax,k_grid_lin,zeta,Kernel_song,xi2,flatidx)    # Integration
 xi_LL=integre('LL',klin_concat,N,klambda,k_grid_lin,zeta,Kernel_song,xi2,flatidx)  # Integration
 xi_SL=integre('SL',klin_concat,N,klambda,k_grid_lin,zeta,Kernel_song,xi2,flatidx)  #
 xi1 = zeta2fields('xi',zeta,k_grid_lin,transcdm,transphi)                          # first order displacement field
                                                                                    #
-hf = h5py.File('displacement.h5', 'w')                                             # Save in h5 format 
+hf = h5py.File(gev_path+'displacement.h5', 'w')                                    # Save in h5 format 
 hf.create_dataset('data', data=fft(xi1+xi_LL+2*xi_SL))                             # 
 hf.close()                                                                         #
+####################################################################################
+
+#################################################################################### potential computation
 print('potential:')                                                                #
 phi_LL=integre('LL',klin_concat,N,klambda,k_grid_lin,zeta,Kernel_song,phi2,flatidx)# Integration
 phi_SL=integre('SL',klin_concat,N,klambda,k_grid_lin,zeta,Kernel_song,phi2,flatidx)#
                                                                                    #
 phi1 = zeta2fields('phi',zeta,k_grid_lin,transcdm,transphi)                        # first order displacement field
-hf = h5py.File('phi.h5', 'w')                                                      # Save in h5 format 
+hf = h5py.File(gev_path+'phi.h5', 'w')                                             # Save in h5 format 
 hf.create_dataset('data', data=fft(phi1+phi_LL+2*phi_SL))                          # 
 hf.close()                                                                         #
 ####################################################################################
 
-################################################################################ scalar velocity computation
-print('Scalar velocity:')                                                      #
-xi2_1,_,_,_=song2xi(song1,k1,k2,k3,flatidx)                                    # Compute the second order kernels velocity v2
-v2 = (xi2_1-xi2)/d_eta                                                         #
-v_LL=integre('LL',klin_concat,N,klambda,k_grid_lin,zeta,Kernel_song,v2,flatidx)# Integration
-v_SL=integre('SL',klin_concat,N,klambda,k_grid_lin,zeta,Kernel_song,v2,flatidx)#
-                                                                               #
-v1  =zeta2fields('v',zeta,k_grid_lin,transcdm,transphi)                        # first order velocity
-hf = h5py.File('velocitypotential.h5', 'w')                                    # Save in h5 format 
-hf.create_dataset('data', data=fft(v1+v_LL+2*v_SL))                            # 
-hf.close()                                                                     #
-################################################################################
+#################################################################################### scalar velocity computation
+print('Scalar velocity:')                                                          #
+xi2_1,_,_,_=song2xi(song1,k1,k2,k3,flatidx)                                        # Compute the second order kernels velocity v2
+v2 = (xi2_1-xi2)/d_eta                                                             #
+v_LL=integre('LL',klin_concat,N,klambda,k_grid_lin,zeta,Kernel_song,v2,flatidx)    # Integration
+v_SL=integre('SL',klin_concat,N,klambda,k_grid_lin,zeta,Kernel_song,v2,flatidx)    #
+                                                                                   #
+v1  =zeta2fields('v',zeta,k_grid_lin,transcdm,transphi)                            # first order velocity
+hf = h5py.File(gev_path+'velocitypotential.h5', 'w')                               # Save in h5 format 
+hf.create_dataset('data', data=fft(v1+v_LL+2*v_SL))                                # 
+hf.close()                                                                         #
+####################################################################################
+
+#################################################################################### Gevolution 
+settings(kmin)
