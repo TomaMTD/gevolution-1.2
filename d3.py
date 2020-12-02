@@ -163,18 +163,54 @@ def trans():
         -delta_cdm transfer function: tr_delta_cdm(k,z)*zeta(k)=delta_cdm(k,z)
         -potential transfer function: tr_phi(z,k)*zeta(k)=phi(z,k)
         '''
+    #import pylab as plt
 
-    song=s.FixedTauFile(song_path+'output/sources_song_z000.dat')
-    k=song.first_order_sources['k']/h
+    #song=s.FixedTauFile(song_path+"output/sources_song_z000_N{}.dat".format(N))
+    #k=song.first_order_sources['k']/h**2
 
-    Primordial= A_s*(k/k_pivot*h)**(n_s-1)/k**3*2*np.pi**2 # I have checked that 
-    tr_delta_cdm=song.first_order_sources[b'delta_cdm']    # Primordial*tr_delta_cdm**2 = CDM Power spectrum of CLASS
-    tr_phi=tr_delta_cdm*(-3*H**2/2) /(k**2+3*H**2)         #
-    np.save('myPowerSpec',np.array([k,Primordial*k**3/(2*np.pi**2) *tr_phi**2]))
+    #Primordial= A_s*(k/(k_pivot*h))**(n_s-1)/k**3*2*np.pi**2 
+    #
+    #tr_delta_cdm=song.first_order_sources[b'delta_cdm']     
+    #tr_phi=tr_delta_cdm*(-3*H**2/2) /(k**2+3*H**2) 
+    #
+    ## Phi transfer function comparision with CLASS
+    #plt.figure()
+    #plt.loglog(k,np.abs(tr_delta_cdm))
+    #claSS=np.loadtxt('../class_public/output/myclasstk.dat')
+    #plt.loglog(claSS[:,0]/h,np.abs(claSS[:,3]))
+    #plt.show()
+
+    # Power spectrum comparison with Gevolution
+    #plt.figure()
+    #plt.loglog(k,Primordial*k**3/2/np.pi**2*tr_phi**2)
+
+    #Pclass= A_s*(claSS[:,0]/(k_pivot*h))**(n_s-1)
+    #plt.loglog(claSS[:,0],Pclass*claSS[:,7]**2)
+
+    #gev=np.loadtxt('gevolution-1.2/output/lcdm_pk000_phi.dat')
+    #plt.loglog(gev[:,0],gev[:,1])
+    #plt.show()
+
+    #################################################################Pure class
+    claSS=np.loadtxt('../class_public/output/myclasstk.dat')
+    k=claSS[:,0]
+    Primordial= A_s*(k/(k_pivot*h))**(n_s-1)/k**3*2*np.pi**2
+    tr_delta_cdm=claSS[:,3]
+    tr_phi=claSS[:,7]
+
+    #plt.figure()
+    #plt.loglog(k,Primordial*k**3/2/np.pi**2 *tr_phi**2,label='Analytic')
+    #gev=np.loadtxt('gevolution-1.2/output/mylcdm_pk000_phi.dat')
+    #plt.loglog(gev[:,0],gev[:,1],label='SONG')
+    #gev=np.loadtxt('gevolution-1.2/output/lcdm_pk000_phi.dat')
+    #plt.loglog(gev[:,0],gev[:,1],label='basic')
+    #plt.legend()
+    #plt.show()
 
     dk=np.diff(np.append(k,k[-1]*2-k[-2]))
     dT=np.diff(np.append(tr_phi,tr_phi[-1]*2-tr_phi[-2]))
-    return np.array([k*h,Primordial]),np.array([k,tr_delta_cdm]),np.array([k,tr_phi]),np.array([k,dT/dk])
+
+    return np.array([k,Primordial]),np.array([k,tr_delta_cdm]),np.array([k,tr_phi]),np.array([k,dT/dk])
 
 ####################################################################################### 
 ####################################################################################### First order stocastic potential 
@@ -192,6 +228,7 @@ def zeta_realisation(k_grid,Primordial):
 
         zeta_ini_Re=np.random.normal(0,np.sqrt(P/2*(2*np.pi)**3),k.shape) # see https://nms.kcl.ac.uk/eugene.lim/AdvCos/lecture2.pdf
         zeta_ini_Im=np.random.normal(0,np.sqrt(P/2*(2*np.pi)**3),k.shape) # for the (2pi)^3 factor (around eq 16) 
+                                                                         # /d3x
                                                                           
         # equivalent :
         #rho =  np.random.normal(0,np.sqrt(P*(2*np.pi)**3),k.shape)
@@ -205,25 +242,59 @@ def zeta_realisation(k_grid,Primordial):
     # fill density ignoring the plan z=0 (zeta[0])
     k=np.sqrt(k_grid[0]**2+k_grid[1][N//2+1:]**2+k_grid[2]**2)
     zeta[1:,:,:]= random (k) 
-
     # fill half of the plan z=0 ignoring the line (z=0,y=N//2)
     k=np.sqrt(k_grid[0]**2+k_grid[1][N//2+1:]**2)[:,:,0]
     zeta[0,N//2+1:]=random(k) 
-
     # fill half of the line (z=0,y=N//2)
     k=k_grid[0][0,:,0][N//2+1:]
     zeta[0,N//2,N//2+1:]=random(k) 
 
-    # Impose zeta(kmax) to be real for even N output
-    zeta[-1,:,:]=zeta[-1,:,:].real
-    zeta[:,-1,:]=zeta[:,-1,:].real 
-    zeta[:,:,-1]=zeta[:,:,-1].real 
 
-    zeta[:,0,:]=zeta[:,0,:].real 
-    zeta[:,:,0]=zeta[:,:,0].real 
+    # Even N in real space give a N+1 FFT grid with symmetries !
+    zeta[1:-1,-1,1:-1]=zeta[1:-1,0,1:-1]  #z&x Plan
+    zeta[1:-1,1:-1,-1]=zeta[1:-1,1:-1,0]  #z&y Plan
 
-    # fill the plan z=0 hermitian conjugate
-    zeta[0,:N//2]=np.conjugate(zeta[0,N//2+1:][::-1,::-1])
+    # Zmax plan Surfaces 
+    zeta[-1,1:N//2,1:N//2]   =np.conjugate(zeta[-1,N//2+1:-1,N//2+1:-1][::-1,::-1]) 
+    zeta[-1,N//2+1:-1,1:N//2]=np.conjugate(zeta[-1,1:N//2,N//2+1:-1][::-1,::-1])     
+
+    # Zmax plan lines X constant and Y constant
+    zeta[-1,N//2,1:N//2]=np.conjugate(zeta[-1,N//2,N//2+1:-1][::-1])
+    zeta[-1,1:N//2,N//2]=np.conjugate(zeta[-1,N//2+1:-1,N//2][::-1])
+
+    r=zeta[:-1,-1,0] # All edges (x=0,y=0),(x=0,y=-1),(x=-1,y=0) and (x=-1,y=-1) are equal 
+    zeta[:-1,-1,-1],zeta[:-1,0,0],zeta[:-1,0,-1]=r,r,r
+
+    r=zeta[-1,0,1:N//2]  # Zmax edges sym with Y constant
+    zeta[-1,-1,1:N//2],zeta[-1,0,N//2+1:-1],zeta[-1,-1,N//2+1:-1]=r,np.conjugate(r[::-1]),np.conjugate(r[::-1])
+
+    r=zeta[-1,1:N//2,0]# Zmax edges sym with X constant
+    zeta[-1,1:N//2,-1],zeta[-1,N//2+1:-1,0],zeta[-1,N//2+1:-1,-1]=r,np.conjugate(r[::-1]),np.conjugate(r[::-1])
+
+    r=zeta[-1,0,0].real    # Zmax plan corners all equal and real 
+    zeta[-1,0,0],zeta[-1,-1,0],zeta[-1,-1,-1],zeta[-1,0,-1]=r,r,r,r
+
+    r=zeta[-1,N//2,0].real # Zmax plan: middle point of edges
+    zeta[-1,N//2,0],zeta[-1,N//2,-1]=r,r
+    r=zeta[-1,0,N//2].real 
+    zeta[-1,0,N//2],zeta[-1,-1,N//2]=r,r
+
+    # Zmax middle point real
+    zeta[-1,N//2,N//2]=zeta[-1,N//2,N//2].real
+
+    # z=0 Plan
+
+    zeta[0,N//2,-1]=zeta[0,N//2,-1].real
+
+    zeta[0,-1,N//2]=zeta[0,-1,N//2].real
+
+    zeta[0,N//2:-1,-1]=zeta[0,N//2:-1,0]
+    zeta[0,-1,N//2+1:-1]=np.conjugate(zeta[0,-1,1:N//2][::-1])
+
+    r=zeta[0,-1,0].real
+    zeta[0,-1,0],zeta[0,-1,-1]=r,r
+
+    zeta[0,:N//2]     =np.conjugate(zeta[0,N//2+1:][::-1,::-1])
     zeta[0,N//2,:N//2]=np.conjugate(zeta[0,N//2,N//2+1:][::-1])
     return zeta
 
@@ -265,7 +336,7 @@ def song2xi(song,k1,k2,k,flatidx):
 
             k1dk2=(kk3**2-kk1**2-kk2**2)/2
 
-            chi2[flatidx[ind1,ind2]]=3./2/kk3**4*( (kk1**2+kk2**2)*k1dk2/3-k1dk2**2/3+kk1**2*kk2**2 )\
+            chi2[flatidx[ind1,ind2]]=3./2/kk3**4*( 2*(kk1**2+kk2**2)*k1dk2/3+k1dk2**2/3+kk1**2*kk2**2 )\
                  *(3*H**2*v1_k1*v1_k2+2*phi1_k1*phi1_k2)
 
             phi2p[flatidx[ind1,ind2]]=(-3*H**2*k1dk2*v1_k1*v1_k2-2*kk3**2*chi2[flatidx[ind1,ind2]]\
@@ -304,7 +375,7 @@ def zeta2fields(field,zeta,k_grid,tr_delta_cdm=0,tr_phi=0):
     elif field=='phi':
         return tr_p*zeta
     else:
-        return 'input field not understand'
+        return 'input field not understood'
 
 ####################################################################################### 
 ####################################################################################### Kernels
@@ -349,21 +420,23 @@ def Kernel_song(kk1,kk2,kk3,K,flatidx):
         if pkk3>=30:
             pkk3=29
         out[ind]=K[flatidx[pkk1,pkk2]][pkk3]
-    #return out 
-    return 1
+    return out 
 
-def we(TT,di):
+def we(kz,ky,kx,di,p):
     import pylab as plt
     from matplotlib.colors import LogNorm
+    TT  = di[kz[0]:kz[1],ky[0]:ky[1],kx[0]:kx[1]].ravel()
     vu=np.zeros_like(di)
     ind=0
     for i in TT:
         if i in di:
             w=np.where(i==di)
             vu[w]=i
-    for i in range(3):
+
+    #for i in range(N//2+1):
+    for i in [p]:
         plt.figure()
-        plt.imshow(np.abs(vu[i].real))
+        plt.imshow(np.abs(vu[i].real))#,norm=LogNorm())
     #plt.imshow(vu)
     plt.show()
     return vu
@@ -412,8 +485,8 @@ def I2_TT_LL(Int,N,xidx,yidx,zidx,k_modulus,k_max,zeta,kern,kern_arg1,kern_arg2)
         for iiky in prange(len(yidx)):
             ky=yidx[iiky]
             for iikz in prange(len(zidx)):
-
                 kz=zidx[iikz]
+
                 k_norm=k_modulus[kz,ky,kx]
 
                 kz_min_lim =max(0,kz-k_max)
@@ -426,20 +499,16 @@ def I2_TT_LL(Int,N,xidx,yidx,zidx,k_modulus,k_max,zeta,kern,kern_arg1,kern_arg2)
                 ky_max_lim=min(ky+k_max+1,N//2+k_max+1)
 
                 zeta_pos=np.copy(zeta[kz_min_lim:kz_max_lim1,\
-                                                 ky_min_lim:ky_max_lim,\
-                                                kx_min_lim:kx_max_lim]).ravel()
+                                      ky_min_lim:ky_max_lim,\
+                                      kx_min_lim:kx_max_lim])
 
-                kk_pos_k=np.copy(k_modulus[kz_min_lim:kz_max_lim1,\
-                                              ky_min_lim:ky_max_lim,\
-                                              kx_min_lim:kx_max_lim]).ravel()
+                kk_pos_k=k_modulus[kz_min_lim:kz_max_lim1, ky_min_lim:ky_max_lim, kx_min_lim:kx_max_lim]
 
-                if kz_min_lim<=kz<kz_max_lim1 and ky_min_lim<=ky<ky_max_lim and kx_min_lim<=kx<kx_max_lim:
-                    zeta_pos.reshape((kz_max_lim1-kz_min_lim,\
-                                           ky_max_lim-ky_min_lim,\
-                                           kx_max_lim-kx_min_lim))[kz-kz_min_lim,ky-ky_min_lim,kx-kx_min_lim]=0
+                #if kz_min_lim<=kz<kz_max_lim1 and ky_min_lim<=ky<ky_max_lim and kx_min_lim<=kx<kx_max_lim:
+                #    zeta_pos [kz-kz_min_lim,ky-ky_min_lim,kx-kx_min_lim]=0
 
-                kern_pos=kern(kk_pos_k,kk_pos_k[::-1]\
-                                   ,k_norm,kern_arg1,kern_arg2)
+                kern_pos=kern(kk_pos_k.ravel(),kk_pos_k[::-1,::-1,::-1].ravel(),k_norm,kern_arg1,kern_arg2)
+                I_pos=np.nansum(zeta_pos.ravel()*zeta_pos[::-1,::-1,::-1].ravel()*kern_pos)
 
                 # if kz>k_max, the zeta_neg part vanishes
                 if k_max-kz+1>0:
@@ -447,24 +516,50 @@ def I2_TT_LL(Int,N,xidx,yidx,zidx,k_modulus,k_max,zeta,kern,kern_arg1,kern_arg2)
                     zeta_neg_k=zeta[kz_max_lim1:kz_max_lim2,\
                                              ky_min_lim:ky_max_lim,\
                                              kx_min_lim:kx_max_lim].ravel()
+
                     kk_neg_k   =k_modulus   [kz_max_lim1:kz_max_lim2,\
                                              ky_min_lim:ky_max_lim,\
                                              kx_min_lim:kx_max_lim].ravel()
 
                     zeta_neg_kmk=zeta[1:k_max-kz+1,N-ky_max_lim:N-ky_min_lim,N-kx_max_lim:N-kx_min_lim].ravel()
+
                     kk_neg_kmk   =k_modulus   [1:k_max-kz+1,N-ky_max_lim:N-ky_min_lim,N-kx_max_lim:N-kx_min_lim].ravel()
 
                     kern_neg=kern(kk_neg_k,kk_neg_kmk\
                                          ,k_norm,kern_arg1,kern_arg2)
                     
-                    Int[kz,ky,kx]=(np.nansum(zeta_pos*zeta_pos[::-1]*kern_pos)\
-                       +2*np.nansum(np.conjugate(zeta_neg_kmk)\
-                                             *zeta_neg_k\
-                                             *kern_neg))*dk**3
+                    Int[kz,ky,kx]=I_pos+2*np.nansum(np.conjugate(zeta_neg_kmk)\
+                                             *zeta_neg_k*kern_neg)
                 else:
-                    Int[kz,ky,kx]=(np.nansum(zeta_pos*zeta_pos[::-1]*kern_pos))*dk**3
+                    Int[kz,ky,kx]=I_pos
                 
     return Int
+
+@jit(nopython=Nopython,fastmath=True,parallel=False)
+def compute(zeta,cc,kz,ky,kx,kmkz,kmky,kmkx,k_modulus,kern,k_norm,kern_arg1,kern_arg2,reverse=True):
+
+    zeta_k   = zeta[kz[0]:kz[1]    ,ky[0]:ky[1]    ,kx[0]:kx[1]].ravel()
+    if reverse:
+        kernel=kern(k_modulus[kz[0]:kz[1], ky[0]:ky[1],kx[0]:kx[1]].ravel()\
+                     ,k_modulus[kmkz[0]:kmkz[1],kmky[0]:kmky[1],kmkx[0]:kmkx[1]][::-1,::-1,::-1].ravel()\
+                     ,k_norm,kern_arg1,kern_arg2)
+        zeta_kmk = zeta[kmkz[0]:kmkz[1],kmky[0]:kmky[1],kmkx[0]:kmkx[1]]\
+                             [::-1,::-1,::-1].ravel()
+    else:
+        kernel=kern(k_modulus[kz[0]:kz[1], ky[0]:ky[1],kx[0]:kx[1]].ravel()\
+                     ,k_modulus[kmkz[0]:kmkz[1],kmky[0]:kmky[1],kmkx[0]:kmkx[1]].ravel()\
+                     ,k_norm,kern_arg1,kern_arg2)
+        zeta_kmk = zeta[kmkz[0]:kmkz[1],kmky[0]:kmky[1],kmkx[0]:kmkx[1]].ravel()
+
+    if cc==1:
+        zeta_kmk=np.conjugate(zeta_kmk)
+    elif cc==2:
+        zeta_k=np.conjugate(zeta_k)
+    elif cc==3:
+        zeta_kmk=np.conjugate(zeta_kmk)
+        zeta_k=np.conjugate(zeta_k)
+    return np.nansum(zeta_k*zeta_kmk*kernel)
+
 
 @jit(nopython=Nopython,fastmath=True,parallel=False)
 def I2_SL(Int,N,xidx,yidx,zidx,k_modulus,k_max,zeta,kern,kern_arg1,kern_arg2):
@@ -491,7 +586,7 @@ def I2_SL(Int,N,xidx,yidx,zidx,k_modulus,k_max,zeta,kern,kern_arg1,kern_arg2):
                           +np.nansum(np.conjugate(zeta_neg_kmk)     *zeta_neg_k            *kern_bis_neg)\
                           +np.nansum(             zeta_d_kmk        *np.conjugate(zeta_d_k)*kern_bis_d))*dk**3
         '''
-
+    Nd2=N//2
     for iikx in prange(len(xidx)):
         kx=xidx[iikx]
         for iiky in prange(len(yidx)):
@@ -502,188 +597,215 @@ def I2_SL(Int,N,xidx,yidx,zidx,k_modulus,k_max,zeta,kern,kern_arg1,kern_arg2):
                 k_norm=k_modulus[kz,ky,kx]
 
                 kz_min_lim=max(0,kz-k_max)
-                kz_max_lim1=min(kz+k_max+1,N//2+1)
+                kz_max_lim1=min(kz+k_max+1,Nd2+1)
                 kz_max_lim2=kz+1
 
                 kx_min_lim=max(0,kx-k_max)
                 kx_max_lim=min(kx+k_max+1,N)
                 ky_min_lim=max(0,ky-k_max)
                 ky_max_lim=min(ky+k_max+1,N)
-                
+
+                kym1=-ky_min_lim+ky
+                kym2= ky_max_lim-ky-1
+                kxm1=-kx_min_lim+kx
+                kxm2= kx_max_lim-kx-1
+
+
+
+                ###########################################################################################################################
+                Xpos,Xneg,Ypos,Yneg,Xd,Yd,XYpos,XYneg,XYd,Z,ZX,ZY,ZXY=0,0,0,0,0,0,0,0,0,0,0,0,0
+                if kx-k_max<0 or kx+k_max>=N:
+
+                    if kx-k_max<0:
+                        kx_min,kx_max=N-(k_max-kx)-1,N-1
+                        kmkx_min,kmkx_max=Nd2+kx+1,Nd2+k_max+1
+                        kmkx_min_neg,kmkx_max_neg=Nd2-k_max,Nd2-kx
+
+                    if kx+k_max>=N:
+                        kx_min,kx_max=1,kx+k_max-N+2
+                        kmkx_min,kmkx_max=Nd2-k_max,kx-Nd2
+                        kmkx_min_neg,kmkx_max_neg=Nd2-kx+N,Nd2+k_max+1
+
+                    Xpos=compute(zeta,0,[kz_min_lim,kz_max_lim2],[ky_min_lim,ky_max_lim],
+                                   [kx_min,kx_max],[0,kz_max_lim2-kz_min_lim],[Nd2-kym2,Nd2+kym1+1],
+                                   [kmkx_min,kmkx_max],k_modulus,kern,k_norm,kern_arg1,kern_arg2)
+
+                    Xneg=compute(zeta,1,[kz_max_lim2,kz_max_lim1],[ky_min_lim,ky_max_lim],
+                                   [kx_min,kx_max],[1,-kz_max_lim2+kz_max_lim1+1],[Nd2-kym1,Nd2+kym2+1],
+                                   [kmkx_min_neg,kmkx_max_neg],k_modulus,kern,k_norm,kern_arg1,kern_arg2,reverse=False)
+ 
+                    if kz-k_max<0:
+                        if kx<Nd2:
+                            kx_min_kzneg,kx_max_kzneg=1,k_max-kx+1
+                        else:
+                            kx_min_kzneg,kx_max_kzneg=N-(kx+k_max-N)-2,N-1
+
+                        Xd=compute(zeta,2,[1,k_max-kz+1],[N-ky_max_lim,N-ky_min_lim],
+                                   [kx_min_kzneg,kx_max_kzneg],[kz_max_lim2-kz_min_lim,k_max+1],[Nd2-kym2,Nd2+kym1+1],
+                                   [kmkx_min,kmkx_max],k_modulus,kern,k_norm,kern_arg1,kern_arg2,reverse=False)
+
+                ###########################################################################################################################"
+                if ky-k_max<0 or ky+k_max>=N:
+
+                    if ky-k_max<0:
+                        ky_min,ky_max=N-(k_max-ky)-1,N-1
+                        kmky_min,kmky_max=Nd2+ky+1,Nd2+k_max+1
+                        kmky_min_neg,kmky_max_neg=Nd2-k_max,Nd2-ky
+
+                    if ky+k_max>=N:
+                        ky_min,ky_max=1,ky+k_max-N+2
+                        kmky_min,kmky_max=Nd2-k_max,ky-N//2
+                        kmky_min_neg,kmky_max_neg=Nd2-ky+N,Nd2+k_max+1
+
+                    Ypos=compute(zeta,0,[kz_min_lim,kz_max_lim2],[ky_min,ky_max],
+                                   [kx_min_lim,kx_max_lim],[0,kz_max_lim2-kz_min_lim],[kmky_min,kmky_max],
+                                   [Nd2-kxm2,Nd2+kxm1+1],k_modulus,kern,k_norm,kern_arg1,kern_arg2)
+
+                    Yneg=compute(zeta,1,[kz_max_lim2,kz_max_lim1],[ky_min,ky_max],
+                                   [kx_min_lim,kx_max_lim],[1,-kz_max_lim2+kz_max_lim1+1],[kmky_min_neg,kmky_max_neg],
+                                   [Nd2-kxm1,Nd2+kxm2+1],k_modulus,kern,k_norm,kern_arg1,kern_arg2,reverse=False)
+
+                    if kz-k_max<0:
+                        if ky<Nd2:
+                            ky_min_kzneg,ky_max_kzneg=1,k_max-ky+1
+                        else:
+                            ky_min_kzneg,ky_max_kzneg=N-(ky+k_max-N)-2,N-1
+
+                        Yd=compute(zeta,2,[1,k_max-kz+1],[ky_min_kzneg,ky_max_kzneg],
+                                   [N-kx_max_lim,N-kx_min_lim],[kz_max_lim2-kz_min_lim,k_max+1],[kmky_min,kmky_max],
+                                   [Nd2-kxm2,Nd2+kxm1+1],k_modulus,kern,k_norm,kern_arg1,kern_arg2,reverse=False)
+
+                #########################################################################################################################
+                if ky-k_max<0:
+                    ky_min_corner,ky_max_corner=1,k_max-ky+1
+                    kmky_min_corner,kmky_max_corner=Nd2-kym2,Nd2-kym2+k_max-ky
+                if ky+k_max>=N:
+                    ky_min_corner,ky_max_corner=N-(k_max+ky-N)-2,N-1
+                    kmky_min_corner,kmky_max_corner=Nd2+kym1-(ky+k_max-N),Nd2+kym1+1
+                if kx-k_max<0:
+                    kx_min_corner,kx_max_corner=1,k_max-kx+1
+                    kmkx_min_corner,kmkx_max_corner=Nd2-kxm2,Nd2-kxm2+k_max-kx
+                if kx+k_max>=N:
+                    kx_min_corner,kx_max_corner=N-(k_max+kx-N)-2,N-1
+                    kmkx_min_corner,kmkx_max_corner=Nd2+kxm1-(kx+k_max-N),Nd2+kxm1+1
+
+                if (kx-k_max<0 or kx+k_max>=N) and (ky-k_max<0 or ky+k_max>=N):
+                    # x&y side pos 
+                    XYpos=compute(zeta,0,[kz_min_lim,kz_max_lim2],[N-ky_max_corner,N-ky_min_corner],
+                                 [N-kx_max_corner,N-kx_min_corner],[0,kz_max_lim2-kz_min_lim],[kmky_min,kmky_max],
+                                 [kmkx_min,kmkx_max],k_modulus,kern,k_norm,kern_arg1,kern_arg2)
+
+                    if kz<Nd2+1:
+                        # x&y side neg
+                        XYneg=compute(zeta,1,[kz_max_lim2,kz_max_lim1],[ky_min,ky_max],
+                                 [kx_min,kx_max],[1,-kz_max_lim2+kz_max_lim1+1],[N-kmky_max,N-kmky_min],
+                                 [N-kmkx_max,N-kmkx_min],k_modulus,kern,k_norm,kern_arg1,kern_arg2,reverse=False)
+
+                    if kz-k_max<0:
+                        # x&y side d
+                        XYd=compute(zeta,2,[1,k_max-kz+1],[N-ky_max,N-ky_min],
+                                 [N-kx_max,N-kx_min],[kz_max_lim2-kz_min_lim,k_max+1],[kmky_min,kmky_max],
+                                 [kmkx_min,kmkx_max],k_modulus,kern,k_norm,kern_arg1,kern_arg2,reverse=False)
+
+                if kz+k_max>Nd2:
+                    ky_min,ky_max=N-(ky_max_lim),N-(ky_min_lim)
+                    kx_min,kx_max=N-(kx_max_lim),N-(kx_min_lim)
+                    kz_min,kz_max=N-kz-k_max-1,N//2
+
+                    # pure z>N//2+1
+                    Z=compute(zeta,3,[kz_min,kz_max],[ky_min,ky_max],
+                                   [kx_min,kx_max],[1,kz+k_max-Nd2+1],[Nd2-kym1,Nd2+kym2+1],
+                                   [Nd2-kxm1,Nd2+kxm2+1],k_modulus,kern,k_norm,kern_arg1,kern_arg2)
+
+                    if (kx-k_max<0 or kx+k_max>=N):
+                        ZX=compute(zeta,3,[kz_min,kz_max],[ky_min,ky_max],
+                                   [kx_min_corner,kx_max_corner],[1,kz+k_max-Nd2+1],[N-(Nd2+kym1+1),N-(Nd2-kym2)],
+                                   [kmkx_min_corner,kmkx_max_corner],k_modulus,kern,k_norm,kern_arg1,kern_arg2)
+
+                    if (ky-k_max<0 or ky+k_max>=N):
+                        ZY=compute(zeta,3,[kz_min,kz_max],[ky_min_corner,ky_max_corner],
+                                   [kx_min,kx_max],[1,kz+k_max-N//2+1],[kmky_min_corner,kmky_max_corner],
+                                   [N-(Nd2+kxm1+1),N-(Nd2-kxm2)],k_modulus,kern,k_norm,kern_arg1,kern_arg2)
+
+                    if (kx-k_max<0 or kx+k_max>=N) and (ky-k_max<0 or ky+k_max>=N):
+                        ZXY=compute(zeta,3,[kz_min,kz_max],[ky_min_corner,ky_max_corner],
+                                   [kx_min_corner,kx_max_corner],[1,kz+k_max-Nd2+1],[kmky_min_corner,kmky_max_corner],
+                                   [kmkx_min_corner,kmkx_max_corner],k_modulus,kern,k_norm,kern_arg1,kern_arg2)
+
+                I_out=Xpos+Xneg+Ypos+Yneg+Xd+Yd+XYpos+XYneg+XYd+Z+ZX+ZY+ZXY
+
                 zeta_pos_k=np.copy(zeta[kz_min_lim:kz_max_lim2,\
                                                  ky_min_lim:ky_max_lim,
                                                  kx_min_lim:kx_max_lim]).ravel()
-                zeta_pos_k.reshape((kz_max_lim2-kz_min_lim,\
-                                        ky_max_lim-ky_min_lim,\
-                                        kx_max_lim-kx_min_lim))[kz-kz_min_lim,ky-ky_min_lim,kx-kx_min_lim]=0
                 kk_pos_k=k_modulus[kz_min_lim:kz_max_lim2,\
                                    ky_min_lim:ky_max_lim,\
                                    kx_min_lim:kx_max_lim].ravel()
 
                 zeta_neg_k=np.copy(zeta[kz_max_lim2:kz_max_lim1,ky_min_lim:ky_max_lim,kx_min_lim:kx_max_lim]).ravel()
-                kk_neg_k   =        k_modulus   [kz_max_lim2:kz_max_lim1,ky_min_lim:ky_max_lim,kx_min_lim:kx_max_lim].ravel()
-
-                kxm1    =-kx_min_lim+kx          
-                kxm2    = kx_max_lim-kx-1        
-                kym1    =-ky_min_lim+ky          
-                kym2    = ky_max_lim-ky-1        
+                kk_neg_k  =k_modulus[kz_max_lim2:kz_max_lim1,ky_min_lim:ky_max_lim,kx_min_lim:kx_max_lim].ravel()
 
                 kzlower= k_max+kz+1-kz_max_lim1 
 
                 zeta_pos_kmk =np.copy(zeta[:kz_max_lim2-kz_min_lim,\
-                                                  N//2-kym2:N//2+kym1+1,\
-                                                  N//2-kxm2:N//2+kxm1+1]).ravel()
+                                                  Nd2-kym2:Nd2+kym1+1,\
+                                                  Nd2-kxm2:Nd2+kxm1+1][::-1,::-1,::-1]).ravel()
                 kk_pos_kmk    =        k_modulus   [:kz_max_lim2-kz_min_lim,\
-                                                  N//2-kym2:N//2+kym1+1,\
-                                                  N//2-kxm2:N//2+kxm1+1].ravel()
+                                                  Nd2-kym2:Nd2+kym1+1,\
+                                                  Nd2-kxm2:Nd2+kxm1+1][::-1,::-1,::-1].ravel()
                 zeta_neg_kmk =np.copy(zeta[1:k_max+1-kzlower,\
-                                                  N//2-kym1:N//2+kym2+1,
-                                                  N//2-kxm1:N//2+kxm2+1]).ravel()
+                                                  Nd2-kym1:Nd2+kym2+1,
+                                                  Nd2-kxm1:Nd2+kxm2+1]).ravel()
                 kk_neg_kmk    =        k_modulus   [1:k_max+1-kzlower,\
-                                                  N//2-kym1:N//2+kym2+1,\
-                                                  N//2-kxm1:N//2+kxm2+1].ravel()
+                                                  Nd2-kym1:Nd2+kym2+1,\
+                                                  Nd2-kxm1:Nd2+kxm2+1].ravel()
 
                 if kz-k_max<k_max+1:
-                    if N//2-k_max<kx<N//2+k_max+1 and N//2-k_max<ky<N//2+k_max+1 and N//2-k_max<kz<N//2+k_max+1:
+                    
+                    if Nd2-2*k_max<=kx<Nd2+2*k_max+1 and Nd2-2*k_max<=ky<Nd2+2*k_max+1:
 
-                        kxupper=min(N//2+1+2*k_max-kx,kx_max_lim-kx_min_lim)
-                        kxlower=max(N//2-kx,0)
-                        kyupper=min(N//2+1+2*k_max-ky,ky_max_lim-ky_min_lim)
-                        kylower=max(N//2-ky,0)
+                        kxupper=min(Nd2+k_max-(N-kx_max_lim)+1,kx_max_lim-kx_min_lim)
+                        kxlower=max(Nd2-k_max-(N-kx_max_lim),0)
+                        kyupper=min(Nd2+k_max-(N-ky_max_lim)+1,ky_max_lim-ky_min_lim)
+                        kylower=max(Nd2-k_max-(N-ky_max_lim),0)
                         kzupper=min(2*k_max-kz+1,k_max+1)
+
                         zeta_pos_k.reshape((kz_max_lim2-kz_min_lim,\
                                                 ky_max_lim-ky_min_lim,\
                                                 kx_max_lim-kx_min_lim))[:kzupper,kylower:kyupper,kxlower:kxupper]=0
-
-                        klx=max(0,2*k_max-(kxupper-kxlower)+1)
-                        kux=min(kxupper-kxlower,2*k_max+1)
-                        kly=max(0,2*k_max-(kyupper-kylower)+1)
-                        kuy=min(kyupper-kylower,2*k_max+1)
-
-                        zeta_pos_kmk.reshape((kz_max_lim2-kz_min_lim,kym1+1+kym2,kxm1+1+kxm2))\
-                                    [k_max-kzupper+1:,kly:kuy,klx:kux]=0
-
                         if kz<k_max+1:
-                            if kx<N//2+1 and ky<N//2+1:
-                                zeta_neg_k.reshape((kz_max_lim1-kz_max_lim2,ky_max_lim-ky_min_lim,kx_max_lim-kx_min_lim))\
-                                                [:k_max-kz,N//2-ky:,N//2-kx:]=0
-                                zeta_neg_kmk.reshape((k_max-kzlower,kym2+1+kym1,kxm2+1+kxm1))\
-                                                [:k_max-kz,N//2-ky:,N//2-kx:]=0
-                            elif kx<N//2+1 and ky>N//2:
-                                zeta_neg_k.reshape((kz_max_lim1-kz_max_lim2,ky_max_lim-ky_min_lim,kx_max_lim-kx_min_lim))\
-                                                [:k_max-kz,:N//2-ky,N//2-kx:]=0
-                                zeta_neg_kmk.reshape((k_max-kzlower,kym2+1+kym1,kxm2+1+kxm1))\
-                                                [:k_max-kz,:N//2-ky,N//2-kx:]=0
-                            elif kx>N//2 and ky<N//2+1:
-                                zeta_neg_k.reshape((kz_max_lim1-kz_max_lim2,ky_max_lim-ky_min_lim,kx_max_lim-kx_min_lim))\
-                                                [:k_max-kz,N//2-ky:,:N//2-kx]=0
-                                zeta_neg_kmk.reshape((k_max-kzlower,kym2+1+kym1,kxm2+1+kxm1))\
-                                                [:k_max-kz,N//2-ky:,:N//2-kx]=0
-                            else:
-                                zeta_neg_k.reshape((kz_max_lim1-kz_max_lim2,ky_max_lim-ky_min_lim,kx_max_lim-kx_min_lim))\
-                                                [:k_max-kz,:N//2-ky,:N//2-kx]=0
-                                zeta_neg_kmk.reshape((k_max-kzlower,kym2+1+kym1,kxm2+1+kxm1))\
-                                                [:k_max-kz,:N//2-ky,:N//2-kx]=0
+                            zeta_neg_k.reshape((kz_max_lim1-kz_max_lim2,ky_max_lim-ky_min_lim,kx_max_lim-kx_min_lim))\
+                                            [:k_max-kz,kylower:kyupper,kxlower:kxupper]=0 
 
-                kern_bis_pos=kern(kk_pos_k,kk_pos_kmk[::-1],k_norm,kern_arg1,kern_arg2)
+                kern_bis_pos=kern(kk_pos_k,kk_pos_kmk,k_norm,kern_arg1,kern_arg2)
 
-                # splitting in three conditions since:
-                #                   for kz==N//2: zeta_neg_k=zeta_d_k=0 
-                #                   for kz>=k_max or kx==N//2 or ky==N//2: zeta_d_k=0 
-                #                   else: general formula splitting into different regions of the space (can probably be simplified)
-                if kz==N//2:
-                    Int[kz,ky,kx]=(np.nansum(zeta_pos_kmk[::-1]*zeta_pos_k*kern_bis_pos))*dk**3
-                elif kz-k_max>=0 or kx==N//2 or ky==N//2:
+                if kz==Nd2:
+                    Int[kz,ky,kx]=(np.nansum(zeta_pos_kmk*zeta_pos_k*kern_bis_pos))+I_out#*dk**3
+                elif kz-k_max>=0:
                     kern_bis_neg=kern(kk_neg_k,kk_neg_kmk      ,k_norm,kern_arg1,kern_arg2)
-                    Int[kz,ky,kx]=(np.nansum(zeta_pos_kmk[::-1]*zeta_pos_k*kern_bis_pos)\
-                       +np.nansum(np.conjugate(zeta_neg_kmk)*zeta_neg_k*kern_bis_neg))*dk**3
+                    Int[kz,ky,kx]=(np.nansum(zeta_pos_kmk*zeta_pos_k*kern_bis_pos)\
+                       +np.nansum(np.conjugate(zeta_neg_kmk)*zeta_neg_k*kern_bis_neg))+I_out
                 else:
                     kern_bis_neg=kern(kk_neg_k,kk_neg_kmk      ,k_norm,kern_arg1,kern_arg2)
-                    if kx<N//2+1 :
-                        if ky<N//2+1:
-                            kxlower=N-min(kx+k_max+1,N//2-k_max)
-                            kylower=N-min(ky+k_max+1,N//2-k_max)
-                            zeta_d_k=zeta[1:k_max-kz+1,kylower:N-ky_min_lim,kxlower:N-kx_min_lim].ravel()
-                            kk_d_k   =k_modulus   [1:k_max-kz+1,kylower:N-ky_min_lim,kxlower:N-kx_min_lim].ravel()
 
-                            kxlower=max(N//2-k_max,kx+k_max+1)
-                            kxupper=min(N//2+k_max+1,N//2+kx+1)
-                            kylower=max(N//2-k_max,ky+k_max+1)
-                            kyupper=min(N//2+k_max+1,N//2+ky+1)
-                            zeta_d_kmk=zeta[kz+1:k_max+1,kylower:kyupper,kxlower:kxupper].ravel()
-                            kk_d_kmk   =k_modulus   [kz+1:k_max+1,kylower:kyupper,kxlower:kxupper].ravel()
-                            kern_bis_d=kern(kk_d_k,kk_d_kmk,k_norm,kern_arg1,kern_arg2)
- 
-                            Int[kz,ky,kx]=(np.nansum(zeta_pos_kmk[::-1]*zeta_pos_k*kern_bis_pos)\
+                    zeta_d_k  =np.copy(zeta[1:k_max-kz+1,N-ky_max_lim:N-ky_min_lim,N-kx_max_lim:N-kx_min_lim].ravel())
+                    zeta_d_kmk =np.copy(zeta[1:k_max-kz+1,Nd2-kym2:Nd2+kym1+1,Nd2-kxm2:Nd2+kxm1+1]).ravel()
+                    kk_d_k  =k_modulus[1:k_max-kz+1,N-ky_max_lim:N-ky_min_lim,N-kx_max_lim:N-kx_min_lim].ravel()
+                    kk_d_kmk=k_modulus[1:k_max-kz+1,Nd2-kym2:Nd2+kym1+1,Nd2-kxm2:Nd2+kxm1+1].ravel()
+                    kern_bis_d=kern(kk_d_k,kk_d_kmk,k_norm,kern_arg1,kern_arg2)
+
+                    if Nd2-2*k_max<=kx<Nd2+2*k_max+1 and Nd2-2*k_max<=ky<Nd2+2*k_max+1:
+                        kxupper=min(Nd2+k_max-(N-kx_max_lim)+1,kx_max_lim-kx_min_lim)
+                        kxlower=max(Nd2-k_max-(N-kx_max_lim),0)
+                        kyupper=min(Nd2+k_max-(N-ky_max_lim)+1,ky_max_lim-ky_min_lim)
+                        kylower=max(Nd2-k_max-(N-ky_max_lim),0)
+                        kzupper=min(2*k_max-kz+1,k_max+1)
+                        
+                        zeta_d_k.reshape((k_max-kz,ky_max_lim-ky_min_lim,kx_max_lim-kx_min_lim))\
+                                               [:kzupper,kylower:kyupper,kxlower:kxupper]=0 
+
+                    Int[kz,ky,kx]=(np.nansum(zeta_pos_kmk*zeta_pos_k*kern_bis_pos)\
                               +np.nansum(np.conjugate(zeta_neg_kmk)*zeta_neg_k*kern_bis_neg)\
-                              +np.nansum(zeta_d_kmk*np.conjugate(zeta_d_k)*kern_bis_d))*dk**3
-
-
-                        else:
-                            kxlower=N-min(kx+k_max+1,N//2-k_max)
-                            kyupper=N-max(ky-k_max,N//2+k_max+1)
-                            zeta_d_k=zeta[1:k_max-kz+1,N-ky_max_lim:kyupper,kxlower:N-kx_min_lim].ravel()
-                            kk_d_k   =k_modulus   [1:k_max-kz+1,N-ky_max_lim:kyupper,kxlower:N-kx_min_lim].ravel()
-
-                            kxlower=max(N//2-k_max,kx+k_max+1)
-                            kxupper=min(N//2+k_max+1,N//2+kx+1)
-                            kylower=max(N//2-k_max,ky-N//2)
-                            kyupper=min(ky-k_max,N//2+k_max+1)
-                            zeta_d_kmk=zeta[kz+1:k_max+1,kylower:kyupper,kxlower:kxupper].ravel()
-                            kk_d_kmk   =k_modulus   [kz+1:k_max+1,kylower:kyupper,kxlower:kxupper].ravel()
-                            kern_bis_d=kern(kk_d_k,kk_d_kmk,k_norm,kern_arg1,kern_arg2)
- 
-                            Int[kz,ky,kx]=(np.nansum(zeta_pos_kmk[::-1]*zeta_pos_k*kern_bis_pos)\
-                              +np.nansum(np.conjugate(zeta_neg_kmk)*zeta_neg_k*kern_bis_neg)\
-                              +np.nansum(zeta_d_kmk*np.conjugate(zeta_d_k)*kern_bis_d))*dk**3
-                            
-                    else:
-                        if ky>N//2:
-                            kxupper=N-max(kx-k_max,N//2+k_max+1)
-                            kyupper=N-max(ky-k_max,N//2+k_max+1)
-                            zeta_d_k=zeta[1:k_max-kz+1,N-ky_max_lim:kyupper,N-kx_max_lim:kxupper].ravel()
-                            kk_d_k   =k_modulus   [1:k_max-kz+1,N-ky_max_lim:kyupper,N-kx_max_lim:kxupper].ravel()
-
-                            kxlower=max(N//2-k_max,kx-N//2)
-                            kxupper=min(kx-k_max,N//2+k_max+1)
-                            kylower=max(N//2-k_max,ky-N//2)
-                            kyupper=min(ky-k_max,N//2+k_max+1)
-                            zeta_d_kmk=zeta[kz+1:k_max+1,kylower:kyupper,kxlower:kxupper].ravel()
-                            kk_d_kmk   =k_modulus   [kz+1:k_max+1,kylower:kyupper,kxlower:kxupper].ravel()
-                            kern_bis_d=kern(kk_d_k,kk_d_kmk,k_norm,kern_arg1,kern_arg2)
- 
-                            Int[kz,ky,kx]=(np.nansum(zeta_pos_kmk[::-1]*zeta_pos_k*kern_bis_pos)\
-                              +np.nansum(np.conjugate(zeta_neg_kmk)*zeta_neg_k*kern_bis_neg)\
-                              +np.nansum(zeta_d_kmk*np.conjugate(zeta_d_k)*kern_bis_d))*dk**3
-
-                        else:
-                            kxupper=N-max(kx-k_max,N//2+k_max+1)
-                            kylower=N-min(ky+k_max+1,N//2-k_max)
-                            zeta_d_k=zeta[1:k_max-kz+1,kylower:N-ky_min_lim,N-kx_max_lim:kxupper].ravel()
-                            kk_d_k   =k_modulus   [1:k_max-kz+1,kylower:N-ky_min_lim,N-kx_max_lim:kxupper].ravel()
-
-                            kxlower=max(N//2-k_max,kx-N//2)
-                            kxupper=min(kx-k_max,N//2+k_max+1)
-                            kylower=max(N//2-k_max,ky+k_max+1)
-                            kyupper=min(N//2+k_max+1,N//2+ky+1)
-                            zeta_d_kmk=zeta[kz+1:k_max+1,kylower:kyupper,kxlower:kxupper].ravel()
-                            kk_d_kmk   =k_modulus   [kz+1:k_max+1,kylower:kyupper,kxlower:kxupper].ravel()
-
-                            kern_bis_d=kern(kk_d_k,kk_d_kmk,k_norm,kern_arg1,kern_arg2)
- 
-                            Int[kz,ky,kx]=(np.nansum(zeta_pos_kmk[::-1]*zeta_pos_k*kern_bis_pos)\
-                              +np.nansum(np.conjugate(zeta_neg_kmk)*zeta_neg_k*kern_bis_neg)\
-                              +np.nansum(zeta_d_kmk*np.conjugate(zeta_d_k)*kern_bis_d))*dk**3
-
-                    # For some reason, if I set parallel=True, the following raise an error :
-                            # TypeError: Failed in nopython mode pipeline (step: convert to parfors)
-                            # object of type 'NoneType' has no len()
-                    # To fix it, I had to writte into each previouse conditions Int[kz,ky,kx]=(...)
-                    # I dont know why !
-                    
-                    #Int[kz,ky,kx]=(np.nansum(zeta_pos_kmk[::-1]*zeta_pos_k*kern_bis_pos)\
-                    #   +np.nansum(np.conjugate(zeta_neg_kmk)*zeta_neg_k*kern_bis_neg))
-                       #+np.nansum(zeta_d_kmk*np.conjugate(zeta_d_k)*kern_bis_d))*dk**3
+                              +np.nansum(zeta_d_kmk*np.conjugate(zeta_d_k)*kern_bis_d))+I_out
     return Int
 
 def integre(which,klin,N,k_max,klin_grid,zeta,kern,kern_arg1,kern_arg2):
@@ -713,6 +835,7 @@ def integre(which,klin,N,k_max,klin_grid,zeta,kern,kern_arg1,kern_arg2):
     Int=np.zeros(zeta.shape,dtype=np.complex64)
     k_modulus=(np.sqrt(klin_grid[0][N//2:]**2+klin_grid[1]**2+klin_grid[2]**2))
     k_max=int(np.where(klin==k_max)[0])-N//2
+    print('k_max={}'.format(k_max))
     klin=np.arange(len(klin))-N//2
 
     if which=='SL':
@@ -722,6 +845,7 @@ def integre(which,klin,N,k_max,klin_grid,zeta,kern,kern_arg1,kern_arg2):
                 xidx=np.arange(N)
                 yidx=np.arange(N)
                 zidx=np.arange(1,N//2+1)
+                #zidx=np.arange(N)
             elif opt==1:
                 xidx=np.arange(N)
                 yidx=np.arange(N//2+1,N)
@@ -778,7 +902,7 @@ def integre(which,klin,N,k_max,klin_grid,zeta,kern,kern_arg1,kern_arg2):
                 zidx=zidx3
 
             I2_TT_LL(Int,N,xidx,yidx,zidx,k_modulus,k_max,zeta,kern,kern_arg1,kern_arg2)
-    return Int/2**3/np.pi**3
+    return Int*dk**3/2**3/np.pi**3
 
 ####################################################################################### 
 ####################################################################################### mode grid
@@ -850,11 +974,11 @@ vector method       = parabolic
 output path         = output/
 generic file base   = lcdm
 snapshot file base  = lcdm_snap
-snapshot redshifts  = 30, 10, 3, 0
-snapshot outputs    = phi, B, Gadget2
+snapshot redshifts  = 
+snapshot outputs    = phi
 Pk file base        = lcdm_pk
-Pk redshifts        = 50, 30, 10, 3, 1, 0
-Pk outputs          = phi, B, chi, hij
+Pk redshifts        = 100
+Pk outputs          = phi
 Pk bins             = 1024
 lightcone file base = lcdm_lightcone
 lightcone outputs   = Gadget2, phi
@@ -901,57 +1025,79 @@ Ngrid               = {}"""
 ########################################################################################################################## 
 ########################################################################################################################## Main
 
-N=32                                                 # Number of mode to be considered (on laptop N=10 is quick enough)
+N=64                                                 # Number of mode to be considered (on laptop N=10 is quick enough)
 print('N='+str(N))                                   #
 kmin=np.float32(0.01)                                # The non-zero smallest mode  
 dk=kmin                                              # which has to be equal to the step of the grid
-klin_concat,kmax,N,dk,klambda=k_distrib(kmin,N,0.02) # Generate the list of mode coordinate (assume h/Mpc)
+klin_concat,kmax,N,dk,klambda=k_distrib(kmin,N,0.1) # Generate the list of mode coordinate (assume h/Mpc)
                                                      ##########################
-song,k1,k2,k3,flatidx,dk12,dk3,song1,d_eta=song_main(kmax*h,kmin*h,N,'lin')   # Get song outputs
-                                                                              #
-Primordial,transcdm,transphi,dTdk=trans()                                     # Get transfer functions and primordial power spectrum 
+song,k1,k2,k3,flatidx,dk12,dk3,song1,d_eta=song_main(kmax*h,kmin*h,N,'lin')  # Get song outputs
+                                                                             #
+Primordial,transcdm,transphi,dTdk=trans()                                    # Get transfer functions and primordial power spectrum 
 k_grid_lin=np.array(np.meshgrid(klin_concat,klin_concat,\
-            klin_concat,sparse=True,indexing='xy'),dtype=object)              # mode Grid 
-zeta=zeta_realisation(k_grid_lin,Primordial)                                  # first order stocastic density
+            klin_concat,sparse=True,indexing='xy'),dtype=object)             # mode Grid 
+zeta=zeta_realisation(k_grid_lin,Primordial)                                 # first order stocastic density
 k_grid_lin=np.array(np.meshgrid(klin_concat,klin_concat,klin_concat\
-            ,sparse=True,indexing='ij'),dtype=object)                         # mode Grid with 'ij' indexing
+            ,sparse=True,indexing='ij'),dtype=object)                        # mode Grid with 'ij' indexing
+
+
+#TT =integre('TT',klin_concat,N,kmax   ,k_grid_lin,phi,transphi,dTdk)                 # total integrale  
+#LL =integre('LL',klin_concat,N,klambda,k_grid_lin,phi,Kernel_analytic,transphi,dTdk) # LL analytic approx int
+#SL =integre('SL',klin_concat,N,klambda,k_grid_lin,phi,Kernel_analytic,transphi,dTdk) # SL analytic approx int
+
+#####debug
+#k_modulus=(np.sqrt(k_grid_lin[0][N//2:]**2+k_grid_lin[1]**2+k_grid_lin[2]**2))
+#xi2,phi2,_,_=song2xi(song,k1,k2,k3,flatidx)             
+#G=np.ones(np.shape(k_modulus))
+#SL=integre('SL',klin_concat,N,klambda,k_grid_lin,G,Kernel_song,xi2,flatidx)   
+#LL=integre('LL',klin_concat,N,klambda,k_grid_lin,G,Kernel_song,xi2,flatidx)   
+#####
+
+#################################################################################### displacement field computation
+print('delta:')                                                                    #
+delta_LL=integre('LL',klin_concat,N,klambda,k_grid_lin,zeta,Kernel_song,song,flatidx)  # Integration
+delta_SL=integre('SL',klin_concat,N,klambda,k_grid_lin,zeta,Kernel_song,song,flatidx)  #
+delta1 = zeta2fields('delta',zeta,k_grid_lin,transcdm,transphi)                        # first order displacement field
+                                                                                   #
+hf = h5py.File(gev_path+'density1.h5', 'w')                                      # Save in h5 format 
+hf.create_dataset('data', data=fft(delta1))                                        # 
+hf.close()                                                                         #
+                                                                                   #
+hf = h5py.File(gev_path+'density2.h5', 'w')                                      # Save in h5 format 
+hf.create_dataset('data', data=fft(delta_LL+2*delta_SL))                           # 
+hf.close()                                  
 
 #################################################################################### displacement field computation
 print('displacement:')                                                             #
 xi2,phi2,_,_=song2xi(song,k1,k2,k3,flatidx)                                        # Compute the second order kernels xi2 and phi2
-#xi_TT=integre('TT',klin_concat,N,kmax,k_grid_lin,zeta,Kernel_song,xi2,flatidx)    # Integration
 xi_LL=integre('LL',klin_concat,N,klambda,k_grid_lin,zeta,Kernel_song,xi2,flatidx)  # Integration
 xi_SL=integre('SL',klin_concat,N,klambda,k_grid_lin,zeta,Kernel_song,xi2,flatidx)  #
-xi1 = zeta2fields('xi',zeta,k_grid_lin,transcdm,transphi)                          # first order displacement field
+xi1    = zeta2fields('xi',zeta,k_grid_lin,transcdm,transphi)                       # first order displacement field
                                                                                    #
 hf = h5py.File(gev_path+'displacement.h5', 'w')                                    # Save in h5 format 
-hf.create_dataset('data', data=fft(xi1+xi_LL+2*xi_SL))                             # 
+hf.create_dataset('data', data=fft(xi1))                                           # 
 hf.close()                                                                         #
-####################################################################################
 
-#################################################################################### potential computation
 print('potential:')                                                                #
 phi_LL=integre('LL',klin_concat,N,klambda,k_grid_lin,zeta,Kernel_song,phi2,flatidx)# Integration
 phi_SL=integre('SL',klin_concat,N,klambda,k_grid_lin,zeta,Kernel_song,phi2,flatidx)#
                                                                                    #
 phi1 = zeta2fields('phi',zeta,k_grid_lin,transcdm,transphi)                        # first order displacement field
 hf = h5py.File(gev_path+'phi.h5', 'w')                                             # Save in h5 format 
-hf.create_dataset('data', data=fft(phi1+phi_LL+2*phi_SL))                          # 
+hf.create_dataset('data', data=fft(phi1))                                          # 
 hf.close()                                                                         #
-####################################################################################
 
-#################################################################################### scalar velocity computation
-print('Scalar velocity:')                                                          #
-xi2_1,_,_,_=song2xi(song1,k1,k2,k3,flatidx)                                        # Compute the second order kernels velocity v2
-v2 = (xi2_1-xi2)/d_eta                                                             #
-v_LL=integre('LL',klin_concat,N,klambda,k_grid_lin,zeta,Kernel_song,v2,flatidx)    # Integration
-v_SL=integre('SL',klin_concat,N,klambda,k_grid_lin,zeta,Kernel_song,v2,flatidx)    #
-                                                                                   #
-v1  =zeta2fields('v',zeta,k_grid_lin,transcdm,transphi)                            # first order velocity
-hf = h5py.File(gev_path+'velocitypotential.h5', 'w')                               # Save in h5 format 
-hf.create_dataset('data', data=fft(v1+v_LL+2*v_SL))                                # 
-hf.close()                                                                         #
-####################################################################################
+################################################################################ scalar velocity computation
+print('Scalar velocity:')                                                      #
+xi2_1,_,_,_=song2xi(song1,k1,k2,k3,flatidx)                                    # Compute the second order kernels velocity v2
+v2 = (xi2_1-xi2)/d_eta                                                         #
+v_LL=integre('LL',klin_concat,N,klambda,k_grid_lin,zeta,Kernel_song,v2,flatidx)# Integration
+v_SL=integre('SL',klin_concat,N,klambda,k_grid_lin,zeta,Kernel_song,v2,flatidx)#
+                                                                               #
+v1  =zeta2fields('v',zeta,k_grid_lin,transcdm,transphi)                        # first order velocity
+hf = h5py.File(gev_path+'velocitypotential.h5', 'w')                           # Save in h5 format 
+hf.create_dataset('data', data=fft(v1))                                        # 
+hf.close()                                                                     #
 
 #################################################################################### Gevolution 
 settings(kmin)
