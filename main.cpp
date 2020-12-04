@@ -575,6 +575,7 @@ int main(int argc, char **argv)
 #ifdef BENCHMARK
 			ref2_time= MPI_Wtime();
 #endif
+			prepareFTsource(Bi, phi, 3. * a * a * Hconf(a, fourpiG, cosmo) / dx / fourpiG);
 			plan_Bi.execute(FFT_FORWARD);
 #ifdef BENCHMARK
 			fft_time += MPI_Wtime() - ref2_time;

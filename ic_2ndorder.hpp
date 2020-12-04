@@ -740,6 +740,7 @@ void generateIC_2ndorder(metadata & sim, icsettings & ic, cosmology & cosmo, con
 	if (sim.baryon_flag)
 		projection_T0i_project(pcls_b, Bi, phi);
 	projection_T0i_comm(Bi);
+	prepareFTsource(*Bi, *phi, 3. * a * a * Hconf(a, fourpiG, cosmo) * (double) sim.numpts / fourpiG);
 	plan_Bi->execute(FFT_FORWARD);
 	projectFTvector(*BiFT, *BiFT, fourpiG / (double) sim.numpts / (double) sim.numpts);	
 	plan_Bi->execute(FFT_BACKWARD);	
