@@ -199,9 +199,9 @@ void prepareFTsource(Field<FieldType> & T0i, Field<FieldType> & phi, const doubl
 	
 	for (x.first(); x.test(); x.next())
 	{
-		T0i(x,0) -= 0.5 * (phi(x) + phi(x+0)) * (T0i(x,0) + coeff * (phi(x+0) - phi(x)));
-		T0i(x,1) -= 0.5 * (phi(x) + phi(x+1)) * (T0i(x,1) + coeff * (phi(x+1) - phi(x)));
-		T0i(x,2) -= 0.5 * (phi(x) + phi(x+2)) * (T0i(x,2) + coeff * (phi(x+2) - phi(x)));
+		T0i(x,0) -= 0.5 * (phi(x) + phi(x+0)) * (T0i(x,0) /*+ coeff * (phi(x+0) - phi(x))*/);
+		T0i(x,1) -= 0.5 * (phi(x) + phi(x+1)) * (T0i(x,1) /*+ coeff * (phi(x+1) - phi(x))*/);
+		T0i(x,2) -= 0.5 * (phi(x) + phi(x+2)) * (T0i(x,2) /*+ coeff * (phi(x+2) - phi(x))*/);
 	}
 }
 
