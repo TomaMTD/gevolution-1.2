@@ -15,17 +15,19 @@ gev_path ='/home/thomas/song/gevolution-1.2/'   # set your one path to gevolutio
 sys.path.insert(0, song_path+'python')          # path to python module of song
 import songy as s
 import h5py
+from subprocess import call
+import matplotlib.pyplot as plt
 
 ####################################################################################### 
 ####################################################################################### Parameters
 h=0.67556
 omega_b=0.022032/h**2
-omega_cdm=0.12038/h**2
+omega_cdm=0.12038/h**2 
 omega_k=0
 H0= 100*h/3/10**5
 z_song=[100,101] # second one for time derivative (velocity)
 z=z_song[0]
-H=100*np.sqrt((omega_b+omega_cdm)*(1+z))/3/10**5 #song provide a slightly different H
+H=100*np.sqrt((omega_cdm+omega_b)*(1+z))/3/10**5 #song provide a slightly different H
 fnl=0
 A_s = 2.215e-9
 n_s = 0.9619
@@ -108,8 +110,7 @@ k_size_custom_song = {}"""
     file.write(pre_file.format(opt,N,opt,kmin,k_modulus_max,int(N*2)))
     file.close()
 
-    from subprocess import call
-    call(['./song', ini, pre])
+    os.system("./song "+ini+' '+pre)
 
     os.system("cp "+song_path+'output/sources_song_z000.dat '+song_path+"output/sources_song_z000_N{}.dat".format(N))
     os.system("cp "+song_path+'output/sources_song_z001.dat '+song_path+"output/sources_song_z001_N{}.dat".format(N))
@@ -163,58 +164,25 @@ def trans():
         -delta_cdm transfer function: tr_delta_cdm(k,z)*zeta(k)=delta_cdm(k,z)
         -potential transfer function: tr_phi(z,k)*zeta(k)=phi(z,k)
         '''
-    #import pylab as plt
+    import pylab as plt
 
-    #song=s.FixedTauFile(song_path+"output/sources_song_z000_N{}.dat".format(N))
-    #k=song.first_order_sources['k']/h**2
+    song=s.FixedTauFile(song_path+"output/sources_song_z000_N{}.dat".format(N))
+    k=song.first_order_sources['k']/h
 
-    #Primordial= A_s*(k/(k_pivot*h))**(n_s-1)/k**3*2*np.pi**2 
-    #
-    #tr_delta_cdm=song.first_order_sources[b'delta_cdm']     
-    #tr_phi=tr_delta_cdm*(-3*H**2/2) /(k**2+3*H**2) 
-    #
-    ## Phi transfer function comparision with CLASS
-    #plt.figure()
-    #plt.loglog(k,np.abs(tr_delta_cdm))
-    #claSS=np.loadtxt('../class_public/output/myclasstk.dat')
-    #plt.loglog(claSS[:,0]/h,np.abs(claSS[:,3]))
-    #plt.show()
-
-    # Power spectrum comparison with Gevolution
-    #plt.figure()
-    #plt.loglog(k,Primordial*k**3/2/np.pi**2*tr_phi**2)
-
-    #Pclass= A_s*(claSS[:,0]/(k_pivot*h))**(n_s-1)
-    #plt.loglog(claSS[:,0],Pclass*claSS[:,7]**2)
-
-    #gev=np.loadtxt('gevolution-1.2/output/lcdm_pk000_phi.dat')
-    #plt.loglog(gev[:,0],gev[:,1])
-    #plt.show()
-
-    #################################################################Pure class
-    claSS=np.loadtxt('../class_public/output/myclasstk.dat')
-    k=claSS[:,0]
-    Primordial= A_s*(k/(k_pivot*h))**(n_s-1)/k**3*2*np.pi**2
-    tr_delta_cdm=claSS[:,3]
-    tr_phi=claSS[:,7]
-
-    #plt.figure()
-    #plt.loglog(k,Primordial*k**3/2/np.pi**2 *tr_phi**2,label='Analytic')
-    #gev=np.loadtxt('gevolution-1.2/output/mylcdm_pk000_phi.dat')
-    #plt.loglog(gev[:,0],gev[:,1],label='SONG')
-    #gev=np.loadtxt('gevolution-1.2/output/lcdm_pk000_phi.dat')
-    #plt.loglog(gev[:,0],gev[:,1],label='basic')
-    #plt.legend()
-    #plt.show()
-
+    Primordial= A_s*(k/(k_pivot/h))**(n_s-1)/k**3*2*np.pi**2 
+    
+    tr_delta_cdm=song.first_order_sources[b'delta_cdm']     
+    tr_delta_b  =song.first_order_sources[b'delta_b']     
+    tr_phi= (omega_b/(omega_b+omega_cdm)*tr_delta_b + omega_cdm/(omega_b+omega_cdm)*tr_delta_cdm)*(-3*H**2/2)/(k**2+3*H**2) 
+    
     dk=np.diff(np.append(k,k[-1]*2-k[-2]))
     dT=np.diff(np.append(tr_phi,tr_phi[-1]*2-tr_phi[-2]))
 
-    return np.array([k,Primordial]),np.array([k,tr_delta_cdm]),np.array([k,tr_phi]),np.array([k,dT/dk])
+    return np.array([k,tr_delta_cdm]),np.array([k,tr_phi]),np.array([k,dT/dk])
 
 ####################################################################################### 
 ####################################################################################### First order stocastic potential 
-def zeta_realisation(k_grid,Primordial):
+def zeta_realisation(k_grid):
     '''
         Generate the linear curvature perturbation field (N//2+1,N,N) at redshift z in half of Fourier space. 
         The reality condition ensure the other half.
@@ -224,29 +192,28 @@ def zeta_realisation(k_grid,Primordial):
             -randomly draw the real/imaginary part of the primordial curvature zeta following a Gaussian PDF with std=sqrt(P(k)/2)
         '''
     def random (k):
-        P=np.interp(k,Primordial[0],Primordial[1])
+        P= A_s*(k/(k_pivot/h))**(n_s-1)/k**3*2*np.pi**2
 
-        zeta_ini_Re=np.random.normal(0,np.sqrt(P/2*(2*np.pi)**3),k.shape) # see https://nms.kcl.ac.uk/eugene.lim/AdvCos/lecture2.pdf
-        zeta_ini_Im=np.random.normal(0,np.sqrt(P/2*(2*np.pi)**3),k.shape) # for the (2pi)^3 factor (around eq 16) 
-                                                                         # /d3x
-                                                                          
+        zeta_ini_Re=np.random.normal(0,N**3*np.sqrt(P/2*dk**3/(2*np.pi)**3),k.shape) # https://nms.kcl.ac.uk/eugene.lim/AdvCos/lecture2.pdf
+        zeta_ini_Im=np.random.normal(0,N**3*np.sqrt(P/2*dk**3/(2*np.pi)**3),k.shape)  
+
         # equivalent :
-        #rho =  np.random.normal(0,np.sqrt(P*(2*np.pi)**3),k.shape)
+        #rho =  np.random.normal(0,N**3*np.sqrt(P*dk**3/(2*np.pi)**3),k.shape)
         #phase = np.random.uniform(0,2*np.pi,k.shape)
         #zeta_ini_Re=rho*np.cos(phase)
         #zeta_ini_Im=rho*np.sin(phase)
-        return zeta_ini_Re+zeta_ini_Im*1j
+        return  zeta_ini_Re+zeta_ini_Im*1j
 
     zeta = np.zeros((N//2+1,N,N),dtype=np.complex64)
 
     # fill density ignoring the plan z=0 (zeta[0])
-    k=np.sqrt(k_grid[0]**2+k_grid[1][N//2+1:]**2+k_grid[2]**2)
+    k=np.sqrt(k_grid[0][N//2+1:]**2+k_grid[1]**2+k_grid[2]**2)
     zeta[1:,:,:]= random (k) 
     # fill half of the plan z=0 ignoring the line (z=0,y=N//2)
-    k=np.sqrt(k_grid[0]**2+k_grid[1][N//2+1:]**2)[:,:,0]
+    k=np.sqrt(k_grid[0][N//2+1:]**2+k_grid[1]**2)[:,:,0]
     zeta[0,N//2+1:]=random(k) 
     # fill half of the line (z=0,y=N//2)
-    k=k_grid[0][0,:,0][N//2+1:]
+    k=k_grid[0][:,0,0][N//2+1:]
     zeta[0,N//2,N//2+1:]=random(k) 
 
 
@@ -377,6 +344,75 @@ def zeta2fields(field,zeta,k_grid,tr_delta_cdm=0,tr_phi=0):
     else:
         return 'input field not understood'
 
+
+def plot_staff():
+    ## Phi transfer function comparision with CLASS
+    #plt.figure()
+    #claSS=np.loadtxt('../class_public/output/myclasstk.dat')
+    #plt.loglog(claSS[:,0],np.abs(claSS[:,3]))
+    #plt.loglog(k,np.abs(tr_delta_cdm))
+    #plt.show()
+
+    # Power spectrum comparison with Gevolution
+
+    #plt.figure()
+    #plt.loglog(k,Primordial*(omega_b/(omega_b+omega_cdm)*tr_delta_b + omega_cdm/(omega_b+omega_cdm)*tr_delta_cdm)**2)
+    #claSS=np.loadtxt('../class_public/output/myclasspk.dat')
+    #plt.loglog(claSS[:,0],np.abs(claSS[:,1]))
+    ##gev=np.loadtxt('gevolution-1.2/output/lcdm_pk000_phi.dat')
+    ##plt.loglog(gev[:,0],gev[:,1])
+    #plt.show()
+
+    #################################################################Pure class
+    #claSS=np.loadtxt('../class_public/output/myclasstk.dat')
+    #k=claSS[:,0]
+    #Primordial= A_s*(k/(k_pivot/h))**(n_s-1)/k**3*2*np.pi**2
+    #tr_delta_cdm=claSS[:,3]
+    #tr_phi=claSS[:,7]
+
+    fig, axs = plt.subplots(2)
+
+    gev=np.loadtxt('gevolution-1.2/output/Pk_basic000_phi.dat')
+    axs[0].loglog(gev[:,0],gev[:,1],label='basic')
+    gev=np.loadtxt('gevolution-1.2/output/Pk_SONG000_phi.dat')
+    axs[0].loglog(gev[:,0],gev[:,1],label='SONG')
+    axs[0].loglog(k,Primordial*k**3/2/np.pi**2 *tr_phi**2,label='Analytic')
+    axs[0].legend()
+    axs[0].set_xlabel('k')
+    axs[0].set_ylabel('Power spectra')
+    #plt.show()
+
+    P=np.interp(gev[:,0],k,Primordial*k**3/2/np.pi**2 *tr_phi**2)
+    gev=np.loadtxt('gevolution-1.2/output/Pk_basic000_phi.dat')
+    axs[1].loglog(gev[:,0],np.abs(gev[:,1]-P)/P,label='basic')
+    gev=np.loadtxt('gevolution-1.2/output/Pk_SONG000_phi.dat')
+    axs[1].loglog(gev[:,0],np.abs(gev[:,1]-P)/P,label='SONG')
+    axs[1].legend()
+    axs[1].set_xlabel('k')
+    axs[1].set_ylabel('errors')
+    plt.show()
+
+
+def we(kz,ky,kx,di,p):
+    """debuging staff"""
+    import pylab as plt
+    from matplotlib.colors import LogNorm
+    TT  = di[kz[0]:kz[1],ky[0]:ky[1],kx[0]:kx[1]].ravel()
+    vu=np.zeros_like(di)
+    ind=0
+    for i in TT:
+        if i in di:
+            w=np.where(i==di)
+            vu[w]=i
+
+    #for i in range(N//2+1):
+    for i in [p]:
+        plt.figure()
+        plt.imshow(np.abs(vu[i].real))#,norm=LogNorm())
+    #plt.imshow(vu)
+    plt.show()
+    return vu
+
 ####################################################################################### 
 ####################################################################################### Kernels
 Nopython=True
@@ -422,24 +458,6 @@ def Kernel_song(kk1,kk2,kk3,K,flatidx):
         out[ind]=K[flatidx[pkk1,pkk2]][pkk3]
     return out 
 
-def we(kz,ky,kx,di,p):
-    import pylab as plt
-    from matplotlib.colors import LogNorm
-    TT  = di[kz[0]:kz[1],ky[0]:ky[1],kx[0]:kx[1]].ravel()
-    vu=np.zeros_like(di)
-    ind=0
-    for i in TT:
-        if i in di:
-            w=np.where(i==di)
-            vu[w]=i
-
-    #for i in range(N//2+1):
-    for i in [p]:
-        plt.figure()
-        plt.imshow(np.abs(vu[i].real))#,norm=LogNorm())
-    #plt.imshow(vu)
-    plt.show()
-    return vu
 
 ####################################################################################### 
 ####################################################################################### intergration
@@ -940,28 +958,36 @@ def k_distrib(k_min,N,klbd,absolute=True):
     return k,np.float32(N//2*k_min),N,np.float32(k_min),kL
 
 def fft(field):
-    new_field=np.zeros((N//2+1,N,N),dtype=np.complex64)
+    '''This function performs the inverse Fourier transform. It uses the numpy function irfftn.
+       The input array has first to be re-organized. 
+       In this code, the array filed is organized this way field=(z=0:Nyquist,y=-Nyquist:0:Nyquist,x=-Nyquist:0:Nyquist)
+       which means shape(field)=(N//2+1,N,N) (Reminder: in the code, N is always odd while N_input is even, N=N_input+1). 
+       The python modules takes as an input an array organized as follow: 
+            field=(x=0:Nyquist-1:-1:-Nyquist, y=0:Nyquist-1:-1:-Nyquist, z=0:Nyquist) which means shape(field)=(N//2+1,N-1,N-1)
+            Note that -Nyquist=+Nyquist since N_input is even. 
+        '''
+    new_field=np.zeros((N//2+1,N-1,N-1),dtype=np.complex64)
 
     field[0,N//2,:N//2]=np.conjugate(field[0,N//2,N//2+1:][::-1])
     field[0,:N//2,:]   =np.conjugate(field[0,N//2+1:,:][::-1,::-1])
 
+    new_field[:,N//2+1:,N//2+1:]=field[:,1:N//2,1:N//2]
     new_field[:,:N//2+1,:N//2+1]=field[:,N//2:,N//2:]
-    new_field[:,N//2+1:,N//2+1:]=field[:,:N//2,:N//2]
 
-    new_field[:,:N//2+1,N//2+1:]=field[:,N//2:,:N//2]
-    new_field[:,N//2+1:,:N//2+1]=field[:,:N//2,N//2:]
+    new_field[:,:N//2+1,N//2+1:]=field[:,N//2:,1:N//2]
+    new_field[:,N//2+1:,:N//2+1]=field[:,1:N//2,N//2:]
 
-    return np.fft.irfftn(new_field,(N-1,N-1,N-1))
+    return np.fft.irfftn(new_field.transpose(),(N-1,N-1,N-1)) 
 
 ####################################################################################### 
 ####################################################################################### Gevolution place
 
-def settings(kmin,ICg='SONG',disp_file='displacement.h5',vel_file='velocitypotential.h5',pot_file='phi.h5'):
+def settings(kmin,setting_name='msetting.ini',ICg='SONG',disp_file='displacement.h5',vel_file='velocitypotential.h5',pot_file='phi.h5'):
     '''create a setting file with the global parameters used in the programme'''
     setx=r"""
 template file = sc1_crystal.dat    
 Tk file = class_tk.dat              
-baryon treatment = blend          
+baryon treatment = ignore
 seed = 42                         
 correct displacement = yes       
 k-domain = cube                
@@ -973,23 +999,9 @@ gravity theory      = GR
 vector method       = parabolic    
 output path         = output/
 generic file base   = lcdm
-snapshot file base  = lcdm_snap
-snapshot redshifts  = 
-snapshot outputs    = phi
-Pk file base        = lcdm_pk
-Pk redshifts        = 100
 Pk outputs          = phi
 Pk bins             = 1024
-lightcone file base = lcdm_lightcone
-lightcone outputs   = Gadget2, phi
-lightcone 0 vertex    = 0, 0, 0       # in units of Mpc/h
-lightcone 0 direction = 1, 1, 1
-lightcone 0 distance  = 100           # in units of Mpc/h
-lightcone 1 vertex    = 0, 0, 0       # in units of Mpc/h
-lightcone 1 direction = 1, 1, 1
-lightcone 1 distance  = 100, 450      # in units of Mpc/h
-lightcone 1 opening half-angle = 30   # degrees
-output              = mPk, dTk, vTk
+output              = mPk
 gauge               = Newtonian
 P_k_ini type        = analytic_Pk
 P_k_max_h/Mpc       = 192           
@@ -999,6 +1011,8 @@ background_verbose  = 1
 spectra_verbose     = 1
 output_verbose      = 1
 
+Pk redshifts        = {}
+Pk file base        = {}
 IC generator      = {}
 displacement file = {}
 velocity file     = {}
@@ -1014,32 +1028,28 @@ initial redshift    = {}
 boxsize             = {} 
 Ngrid               = {}"""
 
-    file = open(gev_path+"/msetting.ini", "w")
-    file.write(setx.format(ICg,disp_file,vel_file,pot_file,N//4,k_pivot,A_s,n_s,h,omega_b*h**2,omega_cdm*h**2\
+    file = open(gev_path+setting_name, "w")
+    file.write(setx.format(z,'Pk_'+ICg,ICg,disp_file,vel_file,pot_file,N//4,k_pivot,A_s,n_s,h,omega_b*h**2,omega_cdm*h**2\
                             ,z,2*np.pi/kmin,N-1))
     file.close()
-
-
 
 ########################################################################################################################## 
 ########################################################################################################################## 
 ########################################################################################################################## Main
 
-N=64                                                 # Number of mode to be considered (on laptop N=10 is quick enough)
+N=128                                                 # Number of mode to be considered (on laptop N=10 is quick enough)
 print('N='+str(N))                                   #
 kmin=np.float32(0.01)                                # The non-zero smallest mode  
 dk=kmin                                              # which has to be equal to the step of the grid
 klin_concat,kmax,N,dk,klambda=k_distrib(kmin,N,0.1) # Generate the list of mode coordinate (assume h/Mpc)
+
                                                      ##########################
 song,k1,k2,k3,flatidx,dk12,dk3,song1,d_eta=song_main(kmax*h,kmin*h,N,'lin')  # Get song outputs
                                                                              #
-Primordial,transcdm,transphi,dTdk=trans()                                    # Get transfer functions and primordial power spectrum 
-k_grid_lin=np.array(np.meshgrid(klin_concat,klin_concat,\
-            klin_concat,sparse=True,indexing='xy'),dtype=object)             # mode Grid 
-zeta=zeta_realisation(k_grid_lin,Primordial)                                 # first order stocastic density
-k_grid_lin=np.array(np.meshgrid(klin_concat,klin_concat,klin_concat\
-            ,sparse=True,indexing='ij'),dtype=object)                        # mode Grid with 'ij' indexing
+transcdm,transphi,dTdk=trans()                                               # Get transfer functions and primordial power spectrum 
 
+k_grid_lin=np.array(np.meshgrid(klin_concat,klin_concat,klin_concat\
+        ,sparse=True,indexing='ij'),dtype=object)                            # mode Grid with 'ij' indexing
 
 #TT =integre('TT',klin_concat,N,kmax   ,k_grid_lin,phi,transphi,dTdk)                 # total integrale  
 #LL =integre('LL',klin_concat,N,klambda,k_grid_lin,phi,Kernel_analytic,transphi,dTdk) # LL analytic approx int
@@ -1055,49 +1065,53 @@ k_grid_lin=np.array(np.meshgrid(klin_concat,klin_concat,klin_concat\
 
 #################################################################################### displacement field computation
 print('delta:')                                                                    #
-delta_LL=integre('LL',klin_concat,N,klambda,k_grid_lin,zeta,Kernel_song,song,flatidx)  # Integration
-delta_SL=integre('SL',klin_concat,N,klambda,k_grid_lin,zeta,Kernel_song,song,flatidx)  #
-delta1 = zeta2fields('delta',zeta,k_grid_lin,transcdm,transphi)                        # first order displacement field
-                                                                                   #
-hf = h5py.File(gev_path+'density1.h5', 'w')                                      # Save in h5 format 
-hf.create_dataset('data', data=fft(delta1))                                        # 
-hf.close()                                                                         #
-                                                                                   #
-hf = h5py.File(gev_path+'density2.h5', 'w')                                      # Save in h5 format 
-hf.create_dataset('data', data=fft(delta_LL+2*delta_SL))                           # 
-hf.close()                                  
+for realisation in range(5):
+    zeta=zeta_realisation(k_grid_lin)                                              # first order stocastic density
 
-#################################################################################### displacement field computation
-print('displacement:')                                                             #
-xi2,phi2,_,_=song2xi(song,k1,k2,k3,flatidx)                                        # Compute the second order kernels xi2 and phi2
-xi_LL=integre('LL',klin_concat,N,klambda,k_grid_lin,zeta,Kernel_song,xi2,flatidx)  # Integration
-xi_SL=integre('SL',klin_concat,N,klambda,k_grid_lin,zeta,Kernel_song,xi2,flatidx)  #
-xi1    = zeta2fields('xi',zeta,k_grid_lin,transcdm,transphi)                       # first order displacement field
-                                                                                   #
-hf = h5py.File(gev_path+'displacement.h5', 'w')                                    # Save in h5 format 
-hf.create_dataset('data', data=fft(xi1))                                           # 
-hf.close()                                                                         #
+    delta_LL=integre('LL',klin_concat,N,klambda,k_grid_lin,zeta,Kernel_song,song,flatidx)  # Integration
+    delta_SL=integre('SL',klin_concat,N,klambda,k_grid_lin,zeta,Kernel_song,song,flatidx)  #
+    delta1 = zeta2fields('delta',zeta,k_grid_lin,transcdm,transphi)                        # first order displacement field
+                                                                                           #
+    hf = h5py.File(gev_path+'density1_{}.h5'.format(realisation), 'w')                     # Save in h5 format 
+    hf.create_dataset('data', data=fft(delta1))                                            # 
+    hf.close()                                                                             #
+                                                                                           #
+    hf = h5py.File(gev_path+'density2_{}.h5'.format(realisation), 'w')                     # Save in h5 format 
+    hf.create_dataset('data', data=fft(delta_LL+2*delta_SL))                               # 
+    hf.close()                                  
 
-print('potential:')                                                                #
-phi_LL=integre('LL',klin_concat,N,klambda,k_grid_lin,zeta,Kernel_song,phi2,flatidx)# Integration
-phi_SL=integre('SL',klin_concat,N,klambda,k_grid_lin,zeta,Kernel_song,phi2,flatidx)#
-                                                                                   #
-phi1 = zeta2fields('phi',zeta,k_grid_lin,transcdm,transphi)                        # first order displacement field
-hf = h5py.File(gev_path+'phi.h5', 'w')                                             # Save in h5 format 
-hf.create_dataset('data', data=fft(phi1))                                          # 
-hf.close()                                                                         #
-
-################################################################################ scalar velocity computation
-print('Scalar velocity:')                                                      #
-xi2_1,_,_,_=song2xi(song1,k1,k2,k3,flatidx)                                    # Compute the second order kernels velocity v2
-v2 = (xi2_1-xi2)/d_eta                                                         #
-v_LL=integre('LL',klin_concat,N,klambda,k_grid_lin,zeta,Kernel_song,v2,flatidx)# Integration
-v_SL=integre('SL',klin_concat,N,klambda,k_grid_lin,zeta,Kernel_song,v2,flatidx)#
-                                                                               #
-v1  =zeta2fields('v',zeta,k_grid_lin,transcdm,transphi)                        # first order velocity
-hf = h5py.File(gev_path+'velocitypotential.h5', 'w')                           # Save in h5 format 
-hf.create_dataset('data', data=fft(v1))                                        # 
-hf.close()                                                                     #
-
-#################################################################################### Gevolution 
-settings(kmin)
+##################################################################################### displacement field computation
+#print('displacement:')                                                             #
+##xi2,phi2,_,_=song2xi(song,k1,k2,k3,flatidx)                                        # Compute the second order kernels xi2 and phi2
+##xi_LL=integre('LL',klin_concat,N,klambda,k_grid_lin,zeta,Kernel_song,xi2,flatidx)  # Integration
+##xi_SL=integre('SL',klin_concat,N,klambda,k_grid_lin,zeta,Kernel_song,xi2,flatidx)  #
+#xi1    = fft(zeta2fields('xi',zeta,k_grid_lin,transcdm,transphi))                       # first order displacement field
+#                                                                                   #
+#hf = h5py.File(gev_path+'displacement.h5', 'w')                                    # Save in h5 format 
+#hf.create_dataset('data', data=xi1)                                                # 
+#hf.close()                                                                         #
+#
+#print('potential:')                                                                #
+##phi_LL=integre('LL',klin_concat,N,klambda,k_grid_lin,zeta,Kernel_song,phi2,flatidx)# Integration
+##phi_SL=integre('SL',klin_concat,N,klambda,k_grid_lin,zeta,Kernel_song,phi2,flatidx)#
+#                                                                                   #
+#phi1 = fft(zeta2fields('phi',zeta,k_grid_lin,transcdm,transphi))                   # first order displacement field
+#hf = h5py.File(gev_path+'phi.h5', 'w')                                             # Save in h5 format 
+#hf.create_dataset('data', data=phi1)                                               # 
+#hf.close()                                                                         #
+#
+################################################################################# scalar velocity computation
+#print('Scalar velocity:')                                                       #
+##xi2_1,_,_,_=song2xi(song1,k1,k2,k3,flatidx)                                    # Compute the second order kernels velocity v2
+##v2 = (xi2_1-xi2)/d_eta                                                         #
+##v_LL=integre('LL',klin_concat,N,klambda,k_grid_lin,zeta,Kernel_song,v2,flatidx)# Integration
+##v_SL=integre('SL',klin_concat,N,klambda,k_grid_lin,zeta,Kernel_song,v2,flatidx)#
+#                                                                                #
+#v1  =fft(zeta2fields('v',zeta,k_grid_lin,transcdm,transphi))                    # first order velocity
+#hf = h5py.File(gev_path+'velocitypotential.h5', 'w')                            # Save in h5 format 
+#hf.create_dataset('data', data=v1)                                              # 
+#hf.close()                                                                      #
+#
+###################################################################################### Gevolution 
+#settings(kmin,'msetting.ini')
+#settings(kmin,'gsetting.ini',ICg='basic',disp_file='',vel_file='',pot_file='')
