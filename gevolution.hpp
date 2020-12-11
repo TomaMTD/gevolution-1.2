@@ -18,9 +18,9 @@
 // 4. Fourier-space projection methods for the computation of the
 //    curl and divergence of the velocity field
 //
-// Author: Julian Adamek (Université de Genève & Observatoire de Paris & Queen Mary University of London)
+// Author: Julian Adamek (Université de Genève & Observatoire de Paris & Queen Mary University of London & Universität Zürich)
 //
-// Last modified: April 2019
+// Last modified: December 2020
 //
 //////////////////////////
 
@@ -181,13 +181,27 @@ void prepareFTsource(Field<FieldType> & phi, Field<FieldType> & chi, Field<Field
 		result(x) -= 0.375 * (phi(x-1) - phi(x+1)) * (phi(x-1) - phi(x+1));
 		result(x) -= 0.375 * (phi(x-2) - phi(x+2)) * (phi(x-2) - phi(x+2));
 #else
-		result(x) *= 1. - 2. * phi(x);
+		result(x) *= 1. - 2. * phi(x) * (1. - phi(x));
 		result(x) += 0.125 * (phi(x-0) - phi(x+0)) * (phi(x-0) - phi(x+0));
 		result(x) += 0.125 * (phi(x-1) - phi(x+1)) * (phi(x-1) - phi(x+1));
 		result(x) += 0.125 * (phi(x-2) - phi(x+2)) * (phi(x-2) - phi(x+2));
 #endif
 #endif
-		result(x) += (coeff3 - coeff) * phi(x) - coeff3 * chi(x);
+		result(x) += (coeff3 * (1. - 3. * phi(x)) - coeff) * phi(x) - coeff3 * chi(x);
+	}
+}
+
+
+template <class FieldType>
+void prepareFTsource(Field<FieldType> & T0i, Field<FieldType> & phi, const double coeff)
+{
+	Site x(phi.lattice());
+	
+	for (x.first(); x.test(); x.next())
+	{
+		T0i(x,0) -= 0.5 * (phi(x) + phi(x+0)) * (T0i(x,0) /*+ coeff * (phi(x+0) - phi(x))*/);
+		T0i(x,1) -= 0.5 * (phi(x) + phi(x+1)) * (T0i(x,1) /*+ coeff * (phi(x+1) - phi(x))*/);
+		T0i(x,2) -= 0.5 * (phi(x) + phi(x+2)) * (T0i(x,2) /*+ coeff * (phi(x+2) - phi(x))*/);
 	}
 }
 
@@ -581,6 +595,18 @@ Real update_q(double dtau, double dx, part_simple * part, double * ref_dist, par
 	Real v2 = (*part).vel[0] * (*part).vel[0] + (*part).vel[1] * (*part).vel[1] + (*part).vel[2] * (*part).vel[2];
 	Real e2 = v2 + params[0] * params[0];
 	
+	Real phiint = (1.-ref_dist[0]) * (1.-ref_dist[1]) * (1.-ref_dist[2]) * phi(xphi);
+	phiint += ref_dist[0] * (1.-ref_dist[1]) * (1.-ref_dist[2]) * phi(xphi+0);
+	phiint += (1.-ref_dist[0]) * ref_dist[1] * (1.-ref_dist[2]) * phi(xphi+1);
+	phiint += ref_dist[0] * ref_dist[1] * (1.-ref_dist[2]) * phi(xphi+1+0);
+	phiint += (1.-ref_dist[0]) * (1.-ref_dist[1]) * ref_dist[2] * phi(xphi+2);
+	phiint += ref_dist[0] * (1.-ref_dist[1]) * ref_dist[2] * phi(xphi+2+0);
+	phiint += (1.-ref_dist[0]) * ref_dist[1] * ref_dist[2] * phi(xphi+2+1);
+	phiint += ref_dist[0] * ref_dist[1] * ref_dist[2] * phi(xphi+2+1+0);
+	
+	phiint /= e2;
+	phiint = 4. * phiint * v2 + (1. + params[0] * params[0] * phiint) * (v2 + e2) / e2;
+	
 	gradphi[0] = (1.-ref_dist[1]) * (1.-ref_dist[2]) * (phi(xphi+0) - phi(xphi));
 	gradphi[1] = (1.-ref_dist[0]) * (1.-ref_dist[2]) * (phi(xphi+1) - phi(xphi));
 	gradphi[2] = (1.-ref_dist[0]) * (1.-ref_dist[1]) * (phi(xphi+2) - phi(xphi));
@@ -594,9 +620,9 @@ Real update_q(double dtau, double dx, part_simple * part, double * ref_dist, par
 	gradphi[1] += ref_dist[0] * ref_dist[2] * (phi(xphi+2+1+0) - phi(xphi+2+0));
 	gradphi[2] += ref_dist[0] * ref_dist[1] * (phi(xphi+2+1+0) - phi(xphi+1+0));
 
-	gradphi[0] *= (v2 + e2) / e2;
-	gradphi[1] *= (v2 + e2) / e2;
-	gradphi[2] *= (v2 + e2) / e2;
+	gradphi[0] *= phiint;
+	gradphi[1] *= phiint;
+	gradphi[2] *= phiint;
 	
 	if (nfield>=2 && fields[1] != NULL)
 	{
@@ -914,7 +940,7 @@ void projection_T00_project(Particles<part, part_info, part_dataType> * pcls, Fi
 	mass *= *(double*)((char*)pcls->parts_info() + pcls->mass_offset());
 	mass /= a;
 	
-	Real e = a, f = 0.;
+	Real e = a, f = 0., f2 = 0.;
 	Real * q;
 	size_t offset_q = offsetof(part,vel);
 	
@@ -954,27 +980,28 @@ void projection_T00_project(Particles<part, part_info, part_dataType> * pcls, Fi
 				{
 					q = (Real*)((char*)&(*it)+offset_q);
 				
-					f = q[0] * q[0] + q[1] * q[1] + q[2] * q[2];
-					e = sqrt(f + a * a);
-					f = 3. * e + f / e;
+					f2 = q[0] * q[0] + q[1] * q[1] + q[2] * q[2];
+					e = sqrt(f2 + a * a);
+					f = 3. * e + f2 / e;
+					f2 = (0.5 * f * f + f2 / (1. + f2 / a / a)) / e;
 				}
 				
 				//000
-				localCube[0] += weightScalarGridDown[0]*weightScalarGridDown[1]*weightScalarGridDown[2]*(e+f*localCubePhi[0]);
+				localCube[0] += weightScalarGridDown[0]*weightScalarGridDown[1]*weightScalarGridDown[2]*(e+f*localCubePhi[0]+f2*localCubePhi[0]*localCubePhi[0]);
 				//001
-				localCube[1] += weightScalarGridDown[0]*weightScalarGridDown[1]*weightScalarGridUp[2]*(e+f*localCubePhi[1]);
+				localCube[1] += weightScalarGridDown[0]*weightScalarGridDown[1]*weightScalarGridUp[2]*(e+f*localCubePhi[1]+f2*localCubePhi[1]*localCubePhi[1]);
 				//010
-				localCube[2] += weightScalarGridDown[0]*weightScalarGridUp[1]*weightScalarGridDown[2]*(e+f*localCubePhi[2]);
+				localCube[2] += weightScalarGridDown[0]*weightScalarGridUp[1]*weightScalarGridDown[2]*(e+f*localCubePhi[2]+f2*localCubePhi[2]*localCubePhi[2]);
 				//011
-				localCube[3] += weightScalarGridDown[0]*weightScalarGridUp[1]*weightScalarGridUp[2]*(e+f*localCubePhi[3]);
+				localCube[3] += weightScalarGridDown[0]*weightScalarGridUp[1]*weightScalarGridUp[2]*(e+f*localCubePhi[3]+f2*localCubePhi[3]*localCubePhi[3]);
 				//100
-				localCube[4] += weightScalarGridUp[0]*weightScalarGridDown[1]*weightScalarGridDown[2]*(e+f*localCubePhi[4]);
+				localCube[4] += weightScalarGridUp[0]*weightScalarGridDown[1]*weightScalarGridDown[2]*(e+f*localCubePhi[4]+f2*localCubePhi[4]*localCubePhi[4]);
 				//101
-				localCube[5] += weightScalarGridUp[0]*weightScalarGridDown[1]*weightScalarGridUp[2]*(e+f*localCubePhi[5]);
+				localCube[5] += weightScalarGridUp[0]*weightScalarGridDown[1]*weightScalarGridUp[2]*(e+f*localCubePhi[5]+f2*localCubePhi[5]*localCubePhi[5]);
 				//110
-				localCube[6] += weightScalarGridUp[0]*weightScalarGridUp[1]*weightScalarGridDown[2]*(e+f*localCubePhi[6]);
+				localCube[6] += weightScalarGridUp[0]*weightScalarGridUp[1]*weightScalarGridDown[2]*(e+f*localCubePhi[6]+f2*localCubePhi[6]*localCubePhi[6]);
 				//111
-				localCube[7] += weightScalarGridUp[0]*weightScalarGridUp[1]*weightScalarGridUp[2]*(e+f*localCubePhi[7]);
+				localCube[7] += weightScalarGridUp[0]*weightScalarGridUp[1]*weightScalarGridUp[2]*(e+f*localCubePhi[7]+f2*localCubePhi[7]*localCubePhi[7]);
 			}
 			
 			(*T00)(xField)	   += localCube[0] * mass;
