@@ -450,12 +450,12 @@ def Kernel_song(kk1,kk2,kk3,K,flatidx):
     for ind in range(len(kk1)):
         if kk1[ind]==0 or kk2[ind]==0:
             continue
-        pkk1=np.int(np.around((kk1[ind]-dk)/dk12))
-        pkk2=np.int(np.around((kk2[ind]-dk)/dk12))
-        pkk3=np.int(np.around((kk3-k3[flatidx[pkk1,pkk2]][0])/dk3[flatidx[pkk1,pkk2]]))
-        if pkk3>=30:
-            pkk3=29
-        out[ind]=K[flatidx[pkk1,pkk2]][pkk3]
+        pkk1,pkk2 = np.int(np.around((kk1[ind]-dk)/dk12)) , np.int(np.around((kk2[ind]-dk)/dk12))
+        if kk3>k3[flatidx[max(pkk1,pkk2),min(pkk1,pkk2)]][-1]:
+            pkk3=-1
+        else:
+            pkk3=np.int(np.around((kk3-k3[flatidx[max(pkk1,pkk2),min(pkk1,pkk2)]][0])/dk3[flatidx[max(pkk1,pkk2),min(pkk1,pkk2)]]))
+        out[ind]=K[flatidx[max(pkk1,pkk2),min(pkk1,pkk2)]][pkk3]
     return out 
 
 
@@ -606,6 +606,7 @@ def I2_SL(Int,N,xidx,yidx,zidx,k_modulus,k_max,zeta,kern,kern_arg1,kern_arg2):
         '''
     Nd2=N//2
     for iikx in prange(len(xidx)):
+        print(iikx)
         kx=xidx[iikx]
         for iiky in prange(len(yidx)):
             ky=yidx[iiky]
