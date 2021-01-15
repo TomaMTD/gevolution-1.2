@@ -1153,8 +1153,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-    a=time.time()
-    main()
-    b=time.time()
-    print(b-a)
