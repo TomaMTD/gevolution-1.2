@@ -3,6 +3,9 @@
  #Authors     :
  #Version     :
  #Description :
+
+ #Note:
+ #  This script uses Pylians3 libraries. more info at https://github.com/franciscovillaescusa/Pylians3/blob/master/documentation/Documentation.md
 #===============================================================================
 
 import numpy as np
@@ -23,7 +26,7 @@ def initializeGlobals():
     '''
     global gridSize, numFiles, filenamesArray
     global BoxSize, kf, ptypes, do_RSD, axis, MAS, threads, verbose
-    global configuration, ihard, isoft, output
+    global configuration, ihard, isoft, OutputDir, classTransfer, SongDir, songSources
     global h, A_s, k_pivot, n_s, redshift
 
     ## Parameters for the density file:
@@ -46,114 +49,112 @@ def initializeGlobals():
     verbose = False        # Whether print information on the status/progress of the calculation: True or False
 
     ## Triangle configuration for the bispectrum measurements:
-    configuration = 'squeezed'  #possible choices are: squeezed' or 'all'
+    configuration = 'squeezed'  #possible choices are: 'squeezed' or 'all'
     ihard         = 40          #Hard modes to compute (It can be put from 1 to grid/3 in units of fundamental frequency. It gives the values for k1/kf and k2/kf)
     isoft         = 40          #Soft modes to compute (This are the values of k3/kf)
 
     ##output directory to save the powerspectrum and bispectrum measurements files:
-    output   = 'output/'
-    songpath = '/home/juan/z.Cosmo_tools/song/python'
+    OutputDir        = 'output/'
+    classTransfer = 'class_tk.dat'  #Class transfer function
+    SongDir      = '/home/juan/z.Cosmo_tools/song/python'    #Song directory
+    songSources   = 'sources_song_z000_N129.dat'    #Song output file
 
     ## Cosmological parameters:
-    h       = 0.67556
-    A_s     = 2.215e-09
-    k_pivot = 0.05     #in 1/Mpc
-    n_s     = 0.9619
+    h        = 0.67556
+    A_s      = 2.215e-09
+    k_pivot  = 0.05     #in 1/Mpc
+    n_s      = 0.9619
     redshift = 100
 
-def read_delta_file():
-    ''' Read the density file that contains overdensity delta.
+def read_delta_file(filename):
+    ''' Read HDF5 files that contains overdensity (delta).
         delta format: It should be a 3D float numpy array such delta = np.zeros((grid, grid, grid), dtype=np.float32)
 
-        filenameArray: list of strings. global parameter, see initializeGlobals().
+        filename: path of the file.
     Returns:
-        deltaArray : array_like
-            Size = number of realizations.
+        delta : array_like
+            Size = (grid, grid, grid)
     '''
-    deltaArray = np.empty((numFiles,gridSize,gridSize,gridSize), dtype=np.float32)
 
-    for i,filename in enumerate(filenamesArray):
-        print("Reading overdensity file: %s \t" %(filename,))
-        try:
-            with h5py.File(filename, "r") as f:
-                # Find keys
-                #print("Keys: %s" % f.keys())
-                file_keys = list(f.keys())[0]
-                # Get the data
-                delta = np.array(f[file_keys], dtype=np.float32)
-            ## This is to read delta^(1) + delta^(2):
-            if i%2==0:
-                deltaArray[(int)(i//2)] = delta
-            else:
-                deltaArray[(int)(i//2)] += delta
-        except OSError:
-            print("Overdensity File Not Found.\t")
-            exit()
+    print("Reading overdensity file: %s \t" %(filename,))
+    try:
+        with h5py.File(filename, "r") as f:
+            # Find keys
+            #print("Keys: %s" % f.keys())
+            file_keys = list(f.keys())[0]
+            # Get the data
+            delta = np.array(f[file_keys], dtype=np.float32)
 
-    return deltaArray
+    except OSError:
+        print("Overdensity File Not Found.\t")
+        exit()
+
+    return delta
 
 def measure_Overdensity(snapshot):
     ''' Measure delta from a snapshot using pylians3 mass-assignment scheme
     '''
+
     print("Reading snapshot file: %s \n" %(snapshot,))
     try:
         # read header
         header   = readgadget.header(snapshot)
-        Boxsize  = header.boxsize#/1e3     #Mpc/h. For gadget2 snapshots uncomment /1e3
+        Boxsize  = header.boxsize#/1e3     #Mpc/h. For Gadget2 snapshots uncomment /1e3
         Nall     = header.nall             #Total number of particles
         Masses   = header.massarr*1e10     #Masses of the particles in Msun/h format:[1](CDM), [2](neutrinos) or [1,2](CDM+neutrinos)
         ptype    = [Nall.nonzero()[0][0]] #[1](CDM), [2](neutrinos) or [1,2](CDM+neutrinos)
     except OSError:
         print("Error: Overdensity File Not Found.\t")
         exit()
-    print('Checking snapshot header data with initializeGlobals() they should agree.\t')
-    print('Boxsize:',BoxSize,Boxsize)
-    print('Particle type', ptypes,ptype)
+    print('Checking snapshot header data, they should agree.\t (right) initializeGlobals, (left) input parameters.\t')
+    print('Boxsize: %s should be equal to %s \t'%(BoxSize,Boxsize))
+    print('Particle type: %i should be equal to %i \t' %(ptypes[0],ptype[0]))
 
     rho = MASL.density_field_gadget(snapshot, ptypes, gridSize, MAS, do_RSD, axis)
     delta = rho/np.mean(rho, dtype=np.float64);  delta -= 1.0   #overdensity
 
     return delta
 
-def makeDensityfile(delta):
+def makeDensityfile(delta,realization):
     '''Transform real delta into phase space delta for py-pow code.
        The output files are saved in .npz file for each realization. format is a 3D array of size delta = (grid, grid, grid)
 
         delta : array_like
             input data, shape = (numfiles, gridsize, gridsize, gridsize)
     '''
-    for ext in range(numFiles):
-        #kf       = 0.01                        # h/Mpc
-        #kf      = 2*np.pi/BoxSize             # h/Mpc
-        kN       = kf*gridSize/2               # h/Mpc Nyquist frequency
-        npticles = (16**3)*64                  #262144  (tiltfactor^3) * N_templete
 
-        outdfile = 'output_pypow/density1bin_grid_%i_mm_z%i.00_gevolution_%i'%(gridSize,redshift,ext)
+    #kf       = 0.01                        # h/Mpc
+    #kf      = 2*np.pi/BoxSize             # h/Mpc
+    kN       = kf*gridSize/2               # h/Mpc Nyquist frequency
+    npticles = (16**3)*64                  #262144  (tiltfactor^3) * N_templete
 
-        print("Saving: %s"%outdfile)
-        header = np.array([gridSize, npticles, kf, kN])
-        deltaFFT = np.fft.fftn(delta[ext])
+    outdfile = 'output_pypow/density1bin_grid_%i_mm_z%i.00_gevolution_%i'%(gridSize,redshift,realization)
 
-        np.savez(outdfile, header = header, data = deltaFFT)
+    print("Saving: %s"%outdfile)
+    header = np.array([gridSize, npticles, kf, kN])
+    deltaFFT = np.fft.fftn(delta)
 
-def computePower(delta):
+    np.savez(outdfile, header = header, data = deltaFFT)
+
+def computePower(delta,realization):
     ''' Measure Powerspectrum. The output is saved in a txt file in the folder
-        specified by output in initializeGlobals().
-
-        file format: k | P0(k)
+        specified by output in initializeGlobals.
 
         delta : array_like
-            input data, shape = (numfiles, gridsize, gridsize, gridsize)
+            input data, shape = (gridsize, gridsize, gridsize)
+        realization: integer
+
+        file format: k | P0(k)
     '''
-    for ext in range(numFiles):
-        filename = output+'powerspectrum%i.dat'%ext
-        print('\n Computing power, saving at '+filename)
 
-        Pkpyl = PKL.Pk(delta[ext], BoxSize, axis, MAS, threads, verbose)
+    filename = OutputDir+'powerspectrum%i.dat'%realization
+    print('\n Computing power, saving at '+filename)
 
-        np.savetxt(filename,np.vstack([Pkpyl.k3D, Pkpyl.Pk[:,0]]).T)
+    Pkpyl = PKL.Pk(delta, BoxSize, axis, MAS, threads, verbose)
 
-def pylians3Biscpetrum(delta,k1,k2,theta):
+    np.savetxt(filename,np.vstack([Pkpyl.k3D, Pkpyl.Pk[:,0]]).T)
+
+def pylians3Bispectrum(delta,k1,k2,theta):
     ''' Get data from pylians3 Bispectrum measurements.
         returns: array_like
             k1/kF | k2/kF | k3/kF | P(k1) | P(k2) | P(k3) | B(k1,k2,k3) | Number of triangles
@@ -175,64 +176,64 @@ def pylians3Biscpetrum(delta,k1,k2,theta):
     lenn = len(theta)
     return  np.vstack([np.full(lenn,k1),np.full(lenn,k2), k3_pyl/kf, np.full(lenn,Pk1_pyl), np.full(lenn,Pk2_pyl), Pk3_pyl, BSk_pyl, triangle_conf])
 
-def computeBispectrum(delta):
+def computeBispectrum(delta,realization):
     '''Bispectrum measurement. The output is saved in a txt file  in the folder
        specified by output in initializeGlobals().
+        delta : array_like
+            input data, shape = (gridsize, gridsize, gridsize)
+        realization: integer
 
        BISPECTRUM FILES:
         Columns: k1/kF | k2/kF | k3/kF | P(k1) | P(k2) | P(k3) | B(k1,k2,k3) | Number of triangles
     '''
 
-    k1 = np.arange(1,ihard,1)
-    k2 = np.arange(1,ihard,1)
-    k3_soft = np.arange(1,isoft,1)
+    k1 = np.arange(1,ihard+1,1)
+    k2 = np.arange(1,ihard+1,1)
+    k3_soft = np.arange(1,isoft+1,1)
 
-    for ext in range(numFiles):
-        filename = output+'bispectrum%i.dat'%ext
-        myfile = open(filename, 'w')
-        format = '%i %i %e %e %e %e %e %e'
+    filename = OutputDir+'bispectrum_%s_%i.dat'%(configuration,realization)
+    myfile = open(filename, 'w')
+    format = '%i %i %e %e %e %e %e %e'
 
-        print('\n Computing %s triangle configuration and saving in file %s'%(configuration,filename))
+    print('\n Computing %s triangle configuration and saving file in %s'%(configuration,filename))
 
-        if configuration == 'squeezed':
-            total = len(k1)
-            count = 1
-            for k11 in k1:
-                print("\n Progress %i/%i:\t" %(count,total))
-                theta = np.arccos( 0.5*(k3_soft/k11)**2 - 1)  ##use for k1=k2
+    if configuration == 'squeezed':
+        total = len(k1)
+        count = 1
+        for k11 in k1:
+            print("\n file number:%i, Progress %i/%i:\t" %(realization,count,total))
+            #set the angle (k1,k2)
+            theta = np.arccos( 0.5*(k3_soft/k11)**2 - 1)  ##use for k1=k2
+            theta = theta[~np.isnan(theta)]
+            lenn  = len(theta)
+
+            if lenn>0:
+                data = pylians3Bispectrum(delta, k11, k11, theta)
+                np.savetxt(myfile,data.T,fmt = format)
+            count+=1
+
+    else:
+        total = len(k1)*len(k2)
+        count = 1
+        for k11 in k1:
+            for k22 in k2:
+                print("\n file number:%i, Progress %i/%i:\t" %(realization,count,total))
+                #set the angle (k1,k2) ##use for all trinagle configuration
+                theta = np.arccos(0.5*(k3_soft**2 - k11**2 - k22**2)/k11/k22)
                 theta = theta[~np.isnan(theta)]
                 lenn = len(theta)
-
                 if lenn>0:
-                    data = pylians3Biscpetrum(delta[ext], k11, k11, theta)
+                    data = pylians3Biscpetrum(delta, k11, k22, theta)
                     np.savetxt(myfile,data.T,fmt = format)
-                    count+=1
-                else:
-                    count+=1
-        else:
-            total = len(k1)*len(k2)
-            count = 1
-            for k11 in k1:
-                for k22 in k2:
-                    print("\n file number:%i, Progress %i/%i:\t" %(ext,count,total))
-                    #set the angle (k1,k2) ##use for all trinagle configuration
-                    theta = np.arccos(0.5*(k3_soft**2 - k11**2 - k22**2)/k11/k22)
-                    theta = theta[~np.isnan(theta)]
-                    lenn = len(theta)
-                    if lenn>0:
-                        data = pylians3Biscpetrum(delta[ext], k11, k22, theta)
-                        np.savetxt(myfile,data.T,fmt = format)
-                        count+=1
-                    else:
-                        count+=1
+                count+=1
 
-        myfile.close()
+    myfile.close()
 
 def classPowerspectrum():
     ''' Compute the linear powerspectrum from the transfer function of class.
         needed in Bispectrum_song
     '''
-    dataClass=np.loadtxt('class_tk.dat')
+    dataClass=np.loadtxt(classTransfer)
 
     k_lin = dataClass[:,0]  ##in h/Mpc
     Tk = dataClass[:,3]
@@ -280,6 +281,7 @@ def Bispectrum_theory(k,Pk,k1,k2):
         ks[i]=k3_norm
 
     return ks, B
+##
 
 def songBispectrum(k_lin,Pk_lin,k1,k2,k3_array):
     ''' Compute the bispectrum using song kernel K2*PS*PS + perm.
@@ -287,30 +289,30 @@ def songBispectrum(k_lin,Pk_lin,k1,k2,k3_array):
     k1,k2,k3_array: wavenumber in h/Mpc
     '''
 
-    sys.path.insert(1, songpath)  #song path
+    sys.path.insert(1, SongDir)  #song path
     import songy
     #read song output file
-    data = songy.FixedTauFile('sources_song_z000_N129.dat')
+    data = songy.FixedTauFile(songSources)
     #get sources:
-    T1 = data.first_order_sources[b'delta_cdm']       #first order transfer function
-    K = np.array(data.get_source(b'delta_cdm'))  #second order kernel *T1 * T1
+    T1 = data.first_order_sources[b'delta_cdm']  #First order transfer function
+    K  = np.array(data.get_source(b'delta_cdm'))  #Second order kernel times two first order transfer function
     #grid of wavenumber:
-    k1_ker = np.array(data.k1)/h
-    k2_ker = np.array(data.k2,dtype=object)/h
-    k3_ker = np.array(data.k3)/h
+    k1_ker  = np.array(data.k1)/h
+    k2_ker  = np.array(data.k2,dtype=object)/h
+    k3_ker  = np.array(data.k3)/h
     flatidx = data.flatidx
     #step of the grid:
-    dk12=(data.k1[1]-data.k1[0])/h
-    dk3=(np.diff(data.k3)[:,0])/h
-    dk = np.float32(kf)
+    dk12 = (data.k1[1]-data.k1[0])/h
+    dk3  = (np.diff(data.k3)[:,0])/h
+    dk   = np.float32(kf)
 
     def Kernel_song(kk1,kk2,kk3):
         '''kk1,kk2,kk3 in h/Mpc
         '''
-        k1_idx=np.int(np.around((kk1-dk)/dk12))
-        k2_idx=np.int(np.around((kk2-dk)/dk12))
-        k3_idx=np.int(np.around((kk3-k3_ker[flatidx[k1_idx,k2_idx]][0])/dk3[flatidx[k1_idx,k2_idx]]))
-        if kk3>k3_ker[flatidx[k1_idx,k2_idx]][-1]:
+        k1_idx = np.int(np.around((kk1-dk)/dk12))
+        k2_idx = np.int(np.around((kk2-dk)/dk12))
+        k3_idx = np.int(np.around((kk3-k3_ker[flatidx[k1_idx,k2_idx]][0])/dk3[flatidx[k1_idx,k2_idx]]))
+        if kk3 > k3_ker[flatidx[k1_idx,k2_idx]][-1]:
             k3_idx=-1
 
         return K[flatidx[k1_idx,k2_idx]][k3_idx]/T1[k1_idx]/T1[k2_idx]
@@ -339,7 +341,7 @@ def plotPowerSpectrum():
     ks_array = []
 
     for ext in range(numFiles):
-        filename = output+'powerspectrum%i.dat'%ext
+        filename = OutputDir+'powerspectrum%i.dat'%ext
         k, pk = np.loadtxt(filename, unpack=True)
         ps_array.append(pk)
         ks_array.append(k)
@@ -349,7 +351,7 @@ def plotPowerSpectrum():
     Pk_pyl_err = np.std(np.array(ps_array), 0)/np.sqrt(Norm)
     k_pyl      = ks_array[0]
 
-    k_lin,Pk_lin = classPowerspectrum()
+    k_lin, Pk_lin = classPowerspectrum()
 
     #Plot
     fig, (ax1, ax2)= plt.subplots(2, 1, gridspec_kw={'height_ratios': [2, 1]})
@@ -366,17 +368,17 @@ def plotPowerSpectrum():
 
     Pk_lin_int = interpolate.interp1d(k_lin, Pk_lin)
 
-    ax2.semilogx(k_pyl,np.abs(1-Pk_pyl/Pk_lin_int(k_pyl)),label='$Lin/Pyl3$')
+    ax2.semilogx(k_pyl,np.abs(1-Pk_pyl/Pk_lin_int(k_pyl))*100,label='$Lin/Pyl3$')
     ax2.set_xlabel(r'$k[h \; Mpc^{-1}]$' , fontsize = 14)
     ax2.set_ylabel(r'$\Delta P(\%)$',size="large")
     ax2.set_xlim(1e-2,2)
-    ax2.set_ylim(0, 0.2)
+    ax2.set_ylim(0, 20)
     ax2.legend()
 
     plt.subplots_adjust(wspace=0, hspace=0)
     plt.savefig('PS_contrast.svg')
 
-def plotBisceptrum(k1):
+def plotBisceptrumSqueez(k1):
     ''' Tool to plot the squeezed bispectrum  BS(k1,k1,k)
     k1: fixed wavenumber in units of the fundamental frequency.
         integer number.
@@ -385,7 +387,7 @@ def plotBisceptrum(k1):
     k3_array = []
 
     for ext in range(numFiles):
-        filename = output+"bispectrum%i.dat" %ext
+        filename = OutputDir+"bispectrum_%s_%i.dat" %(configuration,ext)
         k1_d, k2_d, k3_d, pk1, pk2, pk3, b123_d, cnts = np.loadtxt(filename, unpack=True)
 
         mask = (k1_d == (float)(k1))&(k2_d == (float)(k1))
@@ -432,6 +434,7 @@ def plotBisceptrum(k1):
 
     plt.savefig("BS_Song_p%s.svg" %(str)(k1*kf)[2:4])
 
+
 #===============================================================================
 #                                   MAIN
 #===============================================================================
@@ -444,19 +447,24 @@ if __name__ == '__main__':
     initializeGlobals()
 
     if n=='compute':
-        print('Measuring PowerSpectrum and Bispectrum')
-        deltaArray = read_delta_file()
-        #makeDensityfile(deltaArray)
-        computePower(deltaArray)
-        computeBispectrum(deltaArray)
+        print('\nMeasuring PowerSpectrum and Bispectrum\t')
+        print('--------------------------------------\n')
+
+        for ext in range(numFiles):
+            print('\nMaking %i out of %i realizations.\n'%(ext+1,numFiles))
+            delta = read_delta_file(filenamesArray[(int)(ext*2)])
+            delta += read_delta_file(filenamesArray[(int)(ext*2)+1])
+            #makeDensityfile(deltaArray)
+            computePower(delta,ext)
+            computeBispectrum(delta,ext)
 
     elif n=='plot':
         print('Making PowerSpectrum plot\t')
         plotPowerSpectrum()
         k1_range = np.arange(10,45,5)
         for k1 in k1_range:
-            print('Making Bispectrum plot with k1 = %.2f fixed in the %s configuration\t'%(k1*kf,configuration))
-            plotBisceptrum(k1)
+            print('Making Bispectrum plot with k1 = %.2f fixed in the squeezed configuration\t'%(k1*kf,))
+            plotBisceptrumSqueez(k1)
     else:
         print('Error: Incorrect arguments.\t')
         print('Usage: Bispectrums.py <text>\t')
