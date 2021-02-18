@@ -24,23 +24,27 @@ run='d3' # song: force computation of SONG only
          # d3: compute SL and LL  
          # gevolution: Creates the right settings files (one with basic IC, one with SONG IC)
          # TT and LL+ (to be tested)
+         # kernel: computes and saves the kernels corresponding to the list field
+         # ps: measure the power sepctrum corresponding to the 'measurement' variable
+          
+measurement='d3' # power sepctrum measurement with Pylians
+source='' # force to use an output of song. eg source='N1_513_N3_513_kmin2.0e-04_kmax3.0e-01'
          
-N=512                     # grid size                                
+N=512                    # grid size                                
 kmin=np.float32(0.0002)  # The non-zero smallest mode  h/Mpc
 
-kl=np.float32(0.005)     #  cut off k_lambda    h/Mpc
+kl=np.float32(0.005)#*N/2    #  cut off k_lambda    h/Mpc
 paral= True             # Parallelization of SL and song2xi_numba
-numeric=True             # True: uses SONG interpolation, False: uses analytic approx (only density)
-interp='lin'             # 'lin' or 'nearest'
-field=['delta']          # 'delta':song output,'xi': displacement field,'phi': potential, 
-                         # 'phip': potential time derivative ,'chi': phi-psi , 'v': scalar velocity
+numeric=True            # True: uses SONG interpolation, False: uses analytic approx (only density)
+interp='lin'            # 'lin' or 'nearest'
+field=['delta_song']         # 'delta_song':song density output, 
+                        # 'delta': gevolution density ,'xi': displacement field,'phi': potential, 
+                        # 'phip': potential time derivative ,'chi': phi-psi , 'v': scalar velocity
                          
-
 order=2                               # first-only or first+second order computation
 N_realization=1                       # Number of realisation 
-N_song_k12=N+1                        # Song grid precision
-N_song_k3 =N+1                        # Song grid precision
-kmax_song=np.float32(2*(N+1)*kmin)/h  # maximum value for SONG    h/Mpc
+kmax_song=np.float32(N//2*kmin*1.8)  # maximum value for SONG    h/Mpc
+N_song_k12=kmax_song//kmin                        # Song grid precision
 
 bug=False  # Disable Numba, refresh environment to return to False
            # If Numba bug: try to disable it, it is often a simple problem in python
