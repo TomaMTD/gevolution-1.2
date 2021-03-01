@@ -23,7 +23,7 @@ import Pk_library as PKL
 
 ####################################################################################### 
 ####################################################################################### SONG wrapper
-def run_song(hkmax,hkmin,opt):
+def run_song(hkmax,hkmin):
     ''' Call this function in song repository:
         It will create the ini and pre files from the global parameters and run song
         '''
@@ -96,7 +96,10 @@ k_size_custom_song = {}"""
     file.close()
 
     file = open(pre, "w")
-    file.write(pre_file.format('smart',int(params.N_song_k3),opt,hkmin,hkmax,int(params.N_song_k12)))
+    if params.interp in ['nearest','lin']:
+        file.write(pre_file.format('lin',int(params.N_song_k3),'lin',hkmin,hkmax,int(params.N_song_k12)))
+    else :
+        file.write(pre_file.format('smart',int(params.N_song_k3),'lin',hkmin,hkmax,int(params.N_song_k12)))
     file.close()
 
     os.system("./song "+ini+' '+pre)
@@ -105,7 +108,7 @@ k_size_custom_song = {}"""
     if len(params.z_song)>1: 
         os.system("mv "+params.song_path+'output/sources_song_z001.dat '+params.song_path+"output/sources_song_z001_{}.dat".format(params.key_song))
 
-def song_output(hkmax,hkmin,opt,force):
+def song_output(hkmax,hkmin,force):
     ''' Once song has run, this function load the output by using  
         songy (see song/python/songy.py) routine FixedTauFile. 
         It return the needed output:
@@ -122,12 +125,12 @@ def song_output(hkmax,hkmin,opt,force):
     if not os.path.isfile(params.song_path+'output/'+filename) :
         print(params.song_path+'output/{} not found'.format(filename))
         print('===========================================================================================')
-        run_song(hkmax,hkmin,opt)
+        run_song(hkmax,hkmin)
     elif force:
         print('force running SONG')
         os.system("rm "+params.song_path+'output/{} not found'.format(filename))
         print('===========================================================================================')
-        run_song(hkmax,hkmin,opt)
+        run_song(hkmax,hkmin)
 
     print('===========================================================================================')
     print('loading '+params.song_path+'output/{}'.format(filename))
@@ -140,34 +143,32 @@ def song_output(hkmax,hkmin,opt,force):
         print('SONG N_song_k3={}, you ask {}'.format(len(song.k3[0]),params.N_song_k3))
         print('SONG hkmin={}, you ask {}'.format(np.min(song.k1),hkmin))
         print('SONG hkmax={}, you ask {}'.format(np.max(song.k1),hkmax))
-        
         print('===========================================================================================')
-        #run_song(hkmax,hkmin,opt)
-        #print('loading '+params.song_path+'output/{}'.format(filename))
-        #song=s.FixedTauFile(params.song_path+'output/'+filename)
 
     dk12=song.k1[1]-song.k1[0]
-    #dk3=np.diff(song.k3)[:,0]
-     
-    dk3=np.array([])
-    for k1_ind,k1 in enumerate(song.k1):
-        for k2_ind,k2 in enumerate(song.k2[k1_ind]):
-            k3_ind=song.flatidx[k1_ind,k2_ind]
-            dk3=np.append(dk3,song.k3[k3_ind][2]-song.k3[k3_ind][1])
 
     k3=np.concatenate(song.k3)
+    if params.interp in ['nearest','lin']:
+        dk3=np.diff(song.k3)[:,0]
+    else :
+        dk3=np.array([])
+        for k1_ind,k1 in enumerate(song.k1):
+            for k2_ind,k2 in enumerate(song.k2[k1_ind]):
+                k3_ind=song.flatidx[k1_ind,k2_ind]
+                dk3=np.append(dk3,song.k3[k3_ind][2]-song.k3[k3_ind][1])
+
     k3sizes_cumsum = np.zeros(len(song.k3sizes_cumsum)+2,dtype=int)
     k3sizes_cumsum[1:-1]=song.k3sizes_cumsum
     k3sizes_cumsum[-1]  =len(k3)
     return np.concatenate(song.get_source(b'delta_cdm')),song.tau,song.k1,np.concatenate(song.k2),k3,song.flatidx,dk12,dk3,k3sizes_cumsum
 
-def song_main(hkmax,hkmin,opt,force=False,dSONG=False):
+def song_main(hkmax,hkmin,force=False,dSONG=False):
     '''Main function for SONG '''
 
-    source,tau,k1,k2,k3,flatidx,dk12,dk3,k3sizes_cumsum=song_output(hkmax,hkmin,opt,force)
+    source,tau,k1,k2,k3,flatidx,dk12,dk3,k3sizes_cumsum=song_output(hkmax,hkmin,force)
     if dSONG:
         s2="sources_song_z001_{}.dat".format(params.key_song)
-        source1,tau1,_,_,_,_,_,_,_=song_output(hkmax,hkmin,opt,force,s2)
+        source1,tau1,_,_,_,_,_,_,_=song_output(hkmax,hkmin,force,s2)
         return source,k1/params.h,k2/params.h,k3/params.h,flatidx,dk12/params.h,dk3/params.h,source1,tau1-tau,k3sizes_cumsum
     else:
         return source,k1/params.h,k2/params.h,k3/params.h,flatidx,dk12/params.h,dk3/params.h,k3sizes_cumsum
@@ -206,7 +207,7 @@ def trans():
 def zeta_realisation(k_grid):
     '''
         Generate the linear curvature perturbation field (N//2+1,N,N) at redshift z in half of Fourier space. 
-        The reality condition ensure the other half.
+        The reality condition ensures the other half.
         The computation is in 3 steps:
             -compute the modulus of k in the grid (k)
             -interpolate transfer function and primordial power spectrum tr=T(k) and P=P(k)
@@ -439,22 +440,22 @@ def plot_staff():
     #plt.show()
 
 
-def we(kz,ky,kx,di,p):
-    """debuging staff"""
+def we(kz,ky,kx,di,z):
+    """debuging stuff"""
     import pylab as plt
     from matplotlib.colors import LogNorm
-    TT  = di[kz[0]:kz[1],ky[0]:ky[1],kx[0]:kx[1]].ravel()
-    vu=np.zeros_like(di)
+    #TT  = di[kz[0]:kz[1],ky[0]:ky[1],kx[0]:kx[1]].ravel()
+    vu=np.zeros_like(z)
     ind=0
-    for i in TT:
-        if i in di:
-            w=np.where(i==di)
+    for i in di:
+        if i in z:
+            w=np.where(i==z)
             vu[w]=i
 
     #for i in range(N//2+1):
-    for i in [p]:
+    for i in [1]:
         plt.figure()
-        plt.imshow(np.abs(vu[i].real))#,norm=LogNorm())
+        plt.imshow(np.abs(vu[i].real),norm=LogNorm())
     #plt.imshow(vu)
     plt.show()
     return vu
@@ -487,39 +488,59 @@ def Kernel_analytic(k1 ,k2 ,k3 ,trans,dTdk ,kk11,kk3,   dk,     dk3,     dk12,k3
     k1k2=(k3**2-k1**2-k2**2)/2/k1/k2
     trk1=np.interp(k1,trans[0],trans[1])
     trk2=np.interp(k2,trans[0],trans[1])
-    return 4*trk1*trk2*k1**2*k2**2*(beta-alpha+beta/2*k1k2*(k2/k1+k1/k2)+alpha*k1k2**2+gamma*(k1/k2-k2/k1)**2)/9/H**4
+    return 4*trk1*trk2*k1**2*k2**2*(beta-alpha+beta/2*k1k2*(k2/k1+k1/k2)+alpha*k1k2**2+gamma*(k1/k2-k2/k1)**2)/9/H**4 # d3p
+
+def Kernel_Pp(k1 ,k2 ,k3 ,trans,dTdk ,kk11,kk3,dk,dk3,dk12,k3sizes_cumsum):
+    dividedby = (k1**2+3*H**2) * (k2**2+3*H**2)
+    trk1=np.interp(k1,trans[0],trans[1])
+    trk2=np.interp(k2,trans[0],trans[1])
+    K = Kernel_analytic(k1 ,k2 ,k3 ,trans,dTdk ,kk11,kk3,   dk,     dk3,     dk12,k3sizes_cumsum)
+    return 9*H**4*K/trk1/trk2/dividedby/4
 
 @jit(nopython=Nopython,fastmath=True)
-def interp_nearest(kk1,kk2,kk3,K,flatidx,k1,k3,dk,dk3,dk12):
+def interp_nearest(kk1,kk2,kk3,K,flatidx,k1,k3,dk,dk3,dk12,k3sizes_cumsum):
     out=np.zeros((len(kk1)))
     for ind in range(len(kk1)):
         if kk1[ind]==0 or kk2[ind]==0:
             continue
         pkk1,pkk2 = np.int(np.around((kk1[ind]-dk)/dk12)) , np.int(np.around((kk2[ind]-dk)/dk12))
         pkk1,pkk2 = max(pkk1,pkk2),min(pkk1,pkk2)
-        if kk3>k3[flatidx[pkk1,pkk2]][-1]:
+
+        k3_ind=flatidx[pkk1,pkk2]
+        iii=k3sizes_cumsum[k3_ind]
+        jjj=k3sizes_cumsum[k3_ind+1]
+        k3_list=k3[iii: jjj]
+        K_list=K[iii: jjj]
+
+        if kk3>k3_list[-1]:
             pkk3=-1
-        elif kk3<k3[flatidx[pkk1,pkk2]][0]:
+        elif kk3<k3_list[0]:
             pkk3=0
         else:
-            pkk3=np.int(np.around((kk3-k3[flatidx[pkk1,pkk2]][0])/dk3[flatidx[pkk1,pkk2]]))
-        out[ind]=K[flatidx[pkk1,pkk2]][pkk3]
+            pkk3=np.int(np.around((kk3-k3_list[0])/dk3[k3_ind]))
+        out[ind]=K_list[pkk3]
     return out 
 
 @jit(nopython=Nopython,fastmath=True)
-def interp_lin(kk1,kk2,kk3,K,flatidx,k1,k3,dk,dk3,dk12):
+def interp_lin     (kk1,kk2,kk3,K,flatidx,k1,k3,dk,dk3,dk12,k3sizes_cumsum):
 
     def linear(pkk1,pkk2,kk3):
         pkk1,pkk2 = max(pkk1,pkk2),min(pkk1,pkk2)
-        if kk3>k3[flatidx[pkk1,pkk2]][-1]:
-            return K[flatidx[pkk1,pkk2]][-1]
-        elif kk3<k3[flatidx[pkk1,pkk2]][0]:
-            return K[flatidx[pkk1,pkk2]][0]
+        k3_ind=flatidx[pkk1,pkk2]
+        iii=k3sizes_cumsum[k3_ind]
+        jjj=k3sizes_cumsum[k3_ind+1]
+        k3_list=k3[iii: jjj]
+        K_list=K[iii: jjj]
+
+        if kk3>k3_list[-1]:
+            return K_list[-1]
+        elif kk3<k3_list[0]:
+            return K_list[0]
         else:
-            pkk3=np.int((kk3-k3[flatidx[pkk1,pkk2]][0])/dk3[flatidx[pkk1,pkk2]])
-            return ((k3[flatidx[pkk1,pkk2]][pkk3+1]-kk3)*K[flatidx[pkk1,pkk2]][pkk3]+\
-                  (kk3-k3[flatidx[pkk1,pkk2]][pkk3])*K[flatidx[pkk1,pkk2]][pkk3+1])\
-                       /dk3[flatidx[pkk1,pkk2]]
+            pkk3=np.int((kk3-k3_list[0])/dk3[k3_ind])
+            return ((k3_list[pkk3+1]-kk3)*K_list[pkk3]+\
+                  (kk3-k3_list[pkk3])*K_list[pkk3+1])\
+                       /dk3[k3_ind]
 
     out=np.zeros((len(kk1)))
     for ind in range(len(kk1)):
@@ -587,7 +608,7 @@ def interp_linsmart(kk1,kk2,kk3,K,flatidx,k1,k3,dk,dk3,dk12,k3sizes_cumsum):
 
 ####################################################################################### 
 ####################################################################################### intergration
-@jit(nopython=Nopython,fastmath=True,parallel=False)
+@jit(nopython=Nopython,fastmath=True)
 def compute(zeta,cc,kz,ky,kx,kmkz,kmky,kmkx,k_modulus,kern,k_norm,kern_arg1,kern_arg2,k1,k3,dk,dk3,dk12,k3sizes_cumsum,reverse=True):
     zeta_k   = zeta[kz[0]:kz[1]    ,ky[0]:ky[1]    ,kx[0]:kx[1]].ravel()
     if reverse:
@@ -611,11 +632,11 @@ def compute(zeta,cc,kz,ky,kx,kmkz,kmky,kmkx,k_modulus,kern,k_norm,kern_arg1,kern
     return np.nansum(zeta_k*zeta_kmk*kernel)
 
 
-@jit(nopython=Nopython,fastmath=True,parallel=False)
+@jit(nopython=Nopython,fastmath=True)
 def I2_out(N,kx,ky,kz,k_modulus,k_max,zeta,kern,kern_arg1,kern_arg2,k1,k3,dk,dk3,dk12,\
             Nd2,k_norm,kz_min_lim,kz_max_lim1,kz_max_lim2,kx_min_lim,kx_max_lim,ky_min_lim,\
                         ky_max_lim,kym1,kym2,kxm1,kxm2,k3sizes_cumsum):
-    Xpos,Xneg,Ypos,Yneg,Xd,Yd,XYpos,XYneg,XYd,Z,ZX,ZY,ZXY=0,0,0,0,0,0,0,0,0,0,0,0,0
+    outting=0
     if kx-k_max<0 or kx+k_max>=N:
 
         if kx-k_max<0:
@@ -628,11 +649,11 @@ def I2_out(N,kx,ky,kz,k_modulus,k_max,zeta,kern,kern_arg1,kern_arg2,k1,k3,dk,dk3
             kmkx_min,kmkx_max=Nd2-k_max,kx-Nd2
             kmkx_min_neg,kmkx_max_neg=Nd2-kx+N,Nd2+k_max+1
 
-        Xpos=compute(zeta,0,[kz_min_lim,kz_max_lim2],[ky_min_lim,ky_max_lim],
+        outting+=compute(zeta,0,[kz_min_lim,kz_max_lim2],[ky_min_lim,ky_max_lim],
                        [kx_min,kx_max],[0,kz_max_lim2-kz_min_lim],[Nd2-kym2,Nd2+kym1+1],
                        [kmkx_min,kmkx_max],k_modulus,kern,k_norm,kern_arg1,kern_arg2,k1,k3,dk,dk3,dk12,k3sizes_cumsum)
 
-        Xneg=compute(zeta,1,[kz_max_lim2,kz_max_lim1],[ky_min_lim,ky_max_lim],
+        outting+=compute(zeta,1,[kz_max_lim2,kz_max_lim1],[ky_min_lim,ky_max_lim],
                        [kx_min,kx_max],[1,-kz_max_lim2+kz_max_lim1+1],[Nd2-kym1,Nd2+kym2+1],
                        [kmkx_min_neg,kmkx_max_neg],k_modulus,kern,k_norm,kern_arg1,kern_arg2,k1,k3,dk,dk3,dk12,k3sizes_cumsum,reverse=False)
  
@@ -642,7 +663,7 @@ def I2_out(N,kx,ky,kz,k_modulus,k_max,zeta,kern,kern_arg1,kern_arg2,k1,k3,dk,dk3
             else:
                 kx_min_kzneg,kx_max_kzneg=N-(kx+k_max-N)-2,N-1
 
-            Xd=compute(zeta,2,[1,k_max-kz+1],[N-ky_max_lim,N-ky_min_lim],
+            outting+=compute(zeta,2,[1,k_max-kz+1],[N-ky_max_lim,N-ky_min_lim],
                        [kx_min_kzneg,kx_max_kzneg],[kz_max_lim2-kz_min_lim,k_max+1],[Nd2-kym2,Nd2+kym1+1],
                        [kmkx_min,kmkx_max],k_modulus,kern,k_norm,kern_arg1,kern_arg2,k1,k3,dk,dk3,dk12,k3sizes_cumsum,reverse=False)
 
@@ -659,11 +680,11 @@ def I2_out(N,kx,ky,kz,k_modulus,k_max,zeta,kern,kern_arg1,kern_arg2,k1,k3,dk,dk3
             kmky_min,kmky_max=Nd2-k_max,ky-N//2
             kmky_min_neg,kmky_max_neg=Nd2-ky+N,Nd2+k_max+1
 
-        Ypos=compute(zeta,0,[kz_min_lim,kz_max_lim2],[ky_min,ky_max],
+        outting+=compute(zeta,0,[kz_min_lim,kz_max_lim2],[ky_min,ky_max],
                        [kx_min_lim,kx_max_lim],[0,kz_max_lim2-kz_min_lim],[kmky_min,kmky_max],
                        [Nd2-kxm2,Nd2+kxm1+1],k_modulus,kern,k_norm,kern_arg1,kern_arg2,k1,k3,dk,dk3,dk12,k3sizes_cumsum)
 
-        Yneg=compute(zeta,1,[kz_max_lim2,kz_max_lim1],[ky_min,ky_max],
+        outting+=compute(zeta,1,[kz_max_lim2,kz_max_lim1],[ky_min,ky_max],
                        [kx_min_lim,kx_max_lim],[1,-kz_max_lim2+kz_max_lim1+1],[kmky_min_neg,kmky_max_neg],
                        [Nd2-kxm1,Nd2+kxm2+1],k_modulus,kern,k_norm,kern_arg1,kern_arg2,k1,k3,dk,dk3,dk12,k3sizes_cumsum,reverse=False)
 
@@ -673,7 +694,7 @@ def I2_out(N,kx,ky,kz,k_modulus,k_max,zeta,kern,kern_arg1,kern_arg2,k1,k3,dk,dk3
             else:
                 ky_min_kzneg,ky_max_kzneg=N-(ky+k_max-N)-2,N-1
 
-            Yd=compute(zeta,2,[1,k_max-kz+1],[ky_min_kzneg,ky_max_kzneg],
+            outting+=compute(zeta,2,[1,k_max-kz+1],[ky_min_kzneg,ky_max_kzneg],
                        [N-kx_max_lim,N-kx_min_lim],[kz_max_lim2-kz_min_lim,k_max+1],[kmky_min,kmky_max],
                        [Nd2-kxm2,Nd2+kxm1+1],k_modulus,kern,k_norm,kern_arg1,kern_arg2,k1,k3,dk,dk3,dk12,k3sizes_cumsum,reverse=False)
 
@@ -693,19 +714,19 @@ def I2_out(N,kx,ky,kz,k_modulus,k_max,zeta,kern,kern_arg1,kern_arg2,k1,k3,dk,dk3
 
     if (kx-k_max<0 or kx+k_max>=N) and (ky-k_max<0 or ky+k_max>=N):
         # x&y side pos 
-        XYpos=compute(zeta,0,[kz_min_lim,kz_max_lim2],[N-ky_max_corner,N-ky_min_corner],
+        outting+=compute(zeta,0,[kz_min_lim,kz_max_lim2],[N-ky_max_corner,N-ky_min_corner],
                      [N-kx_max_corner,N-kx_min_corner],[0,kz_max_lim2-kz_min_lim],[kmky_min,kmky_max],
                      [kmkx_min,kmkx_max],k_modulus,kern,k_norm,kern_arg1,kern_arg2,k1,k3,dk,dk3,dk12,k3sizes_cumsum)
 
         if kz<Nd2+1:
             # x&y side neg
-            XYneg=compute(zeta,1,[kz_max_lim2,kz_max_lim1],[ky_min,ky_max],
+            outting+=compute(zeta,1,[kz_max_lim2,kz_max_lim1],[ky_min,ky_max],
                      [kx_min,kx_max],[1,-kz_max_lim2+kz_max_lim1+1],[N-kmky_max,N-kmky_min],
                      [N-kmkx_max,N-kmkx_min],k_modulus,kern,k_norm,kern_arg1,kern_arg2,k1,k3,dk,dk3,dk12,k3sizes_cumsum,reverse=False)
 
         if kz-k_max<0:
             # x&y side d
-            XYd=compute(zeta,2,[1,k_max-kz+1],[N-ky_max,N-ky_min],
+            outting+=compute(zeta,2,[1,k_max-kz+1],[N-ky_max,N-ky_min],
                      [N-kx_max,N-kx_min],[kz_max_lim2-kz_min_lim,k_max+1],[kmky_min,kmky_max],
                      [kmkx_min,kmkx_max],k_modulus,kern,k_norm,kern_arg1,kern_arg2,k1,k3,dk,dk3,dk12,k3sizes_cumsum,reverse=False)
 
@@ -715,29 +736,29 @@ def I2_out(N,kx,ky,kz,k_modulus,k_max,zeta,kern,kern_arg1,kern_arg2,k1,k3,dk,dk3
         kz_min,kz_max=N-kz-k_max-1,N//2
 
         # pure z>N//2+1
-        Z=compute(zeta,3,[kz_min,kz_max],[ky_min,ky_max],
+        outting+=compute(zeta,3,[kz_min,kz_max],[ky_min,ky_max],
                        [kx_min,kx_max],[1,kz+k_max-Nd2+1],[Nd2-kym1,Nd2+kym2+1],
                        [Nd2-kxm1,Nd2+kxm2+1],k_modulus,kern,k_norm,kern_arg1,kern_arg2,k1,k3,dk,dk3,dk12,k3sizes_cumsum)
 
         if (kx-k_max<0 or kx+k_max>=N):
-            ZX=compute(zeta,3,[kz_min,kz_max],[ky_min,ky_max],
+            outting+=compute(zeta,3,[kz_min,kz_max],[ky_min,ky_max],
                        [kx_min_corner,kx_max_corner],[1,kz+k_max-Nd2+1],[N-(Nd2+kym1+1),N-(Nd2-kym2)],
                        [kmkx_min_corner,kmkx_max_corner],k_modulus,kern,k_norm,kern_arg1,kern_arg2,k1,k3,dk,dk3,dk12,k3sizes_cumsum)
 
         if (ky-k_max<0 or ky+k_max>=N):
-            ZY=compute(zeta,3,[kz_min,kz_max],[ky_min_corner,ky_max_corner],
+            outting+=compute(zeta,3,[kz_min,kz_max],[ky_min_corner,ky_max_corner],
                        [kx_min,kx_max],[1,kz+k_max-N//2+1],[kmky_min_corner,kmky_max_corner],
                        [N-(Nd2+kxm1+1),N-(Nd2-kxm2)],k_modulus,kern,k_norm,kern_arg1,kern_arg2,k1,k3,dk,dk3,dk12,k3sizes_cumsum)
 
         if (kx-k_max<0 or kx+k_max>=N) and (ky-k_max<0 or ky+k_max>=N):
-            ZXY=compute(zeta,3,[kz_min,kz_max],[ky_min_corner,ky_max_corner],
+            outting+=compute(zeta,3,[kz_min,kz_max],[ky_min_corner,ky_max_corner],
                        [kx_min_corner,kx_max_corner],[1,kz+k_max-Nd2+1],[kmky_min_corner,kmky_max_corner],
                        [kmkx_min_corner,kmkx_max_corner],k_modulus,kern,k_norm,kern_arg1,kern_arg2,k1,k3,dk,dk3,dk12,k3sizes_cumsum)
 
-    return Xpos+Xneg+Ypos+Yneg+Xd+Yd+XYpos+XYneg+XYd+Z+ZX+ZY+ZXY
+    return outting
 
-@jit(nopython=Nopython,fastmath=True,parallel=params.paral)
-def I2_LL(Int,N,xidx,yidx,zidx,k_modulus,k_max,zeta,kern,kern_arg1,kern_arg2,k1,k3,dk,dk3,dk12,k3sizes_cumsum):
+@jit(nopython=Nopython,fastmath=True)
+def I2_LL(Int,N,Nd2,kx,ky,kz,k_modulus,k_max,zeta,kern,kern_arg1,kern_arg2,k1,k3,dk,dk3,dk12,k3sizes_cumsum):
     '''
         Compute LL integral with cut-off k_max. Here k_max is an index defined in 
         function integre(): k_max=int(np.where(klin==k_max)[0])-N//2.
@@ -773,100 +794,84 @@ def I2_LL(Int,N,xidx,yidx,zidx,k_modulus,k_max,zeta,kern,kern_arg1,kern_arg2,k1,
                         +2*np.nansum(np.conjugate(zeta_neg_kmk)*zeta_neg_k    *kern_neg))
 
         '''
-    for iikx in prange(len(xidx)):
-        if iikx%10==0: print(iikx)
-        kx=xidx[iikx]
-        for iiky in  prange(len(yidx)):
-            ky=yidx[iiky]
-            for iikz in prange(len(zidx)):
-                kz=zidx[iikz]
 
-                k_norm=k_modulus[kz,ky,kx]
+    k_norm=k_modulus[kz,ky,kx]
 
-                kz_min_lim =max(0,kz-k_max)
-                kz_max_lim1=min(kz+1,k_max+1)
+    kz_min_lim =max(0,kz-k_max)
+    kz_max_lim1=min(kz+1,k_max+1)
 
-                kx_min_lim=max(N//2-k_max,kx-k_max)
-                kx_max_lim=min(kx+k_max+1,N//2+k_max+1)
+    kx_min_lim=max(N//2-k_max,kx-k_max)
+    kx_max_lim=min(kx+k_max+1,N//2+k_max+1)
 
-                ky_min_lim=max(N//2-k_max,ky-k_max)
-                ky_max_lim=min(ky+k_max+1,N//2+k_max+1)
+    ky_min_lim=max(N//2-k_max,ky-k_max)
+    ky_max_lim=min(ky+k_max+1,N//2+k_max+1)
 
 
-                zeta_pos=np.copy(zeta[kz_min_lim:kz_max_lim1,\
-                                      ky_min_lim:ky_max_lim,\
-                                      kx_min_lim:kx_max_lim])
+    zeta_pos=np.copy(zeta[kz_min_lim:kz_max_lim1,\
+                          ky_min_lim:ky_max_lim,\
+                          kx_min_lim:kx_max_lim])
 
-                #we([kz_min_lim,kz_max_lim1],[ky_min_lim,ky_max_lim],[kx_min_lim,kx_max_lim],zeta,kz)
+    kk_pos_k=k_modulus[kz_min_lim:kz_max_lim1, ky_min_lim:ky_max_lim, kx_min_lim:kx_max_lim]
 
-                kk_pos_k=k_modulus[kz_min_lim:kz_max_lim1, ky_min_lim:ky_max_lim, kx_min_lim:kx_max_lim]
+    #if kz_min_lim<=kz<kz_max_lim1 and ky_min_lim<=ky<ky_max_lim and kx_min_lim<=kx<kx_max_lim:
+    #    zeta_pos [kz-kz_min_lim,ky-ky_min_lim,kx-kx_min_lim]=0
 
-                #if kz_min_lim<=kz<kz_max_lim1 and ky_min_lim<=ky<ky_max_lim and kx_min_lim<=kx<kx_max_lim:
-                #    zeta_pos [kz-kz_min_lim,ky-ky_min_lim,kx-kx_min_lim]=0
+    kern_pos=kern(kk_pos_k.ravel(),kk_pos_k[::-1,::-1,::-1].ravel(),\
+                  k_norm,kern_arg1,kern_arg2,k1,k3,dk,dk3,dk12,k3sizes_cumsum)
+    I_pos=np.nansum(zeta_pos.ravel()*zeta_pos[::-1,::-1,::-1].ravel()*kern_pos)
 
-                kern_pos=kern(kk_pos_k.ravel(),kk_pos_k[::-1,::-1,::-1].ravel(),\
-                              k_norm,kern_arg1,kern_arg2,k1,k3,dk,dk3,dk12,k3sizes_cumsum)
-                I_pos=np.nansum(zeta_pos.ravel()*zeta_pos[::-1,::-1,::-1].ravel()*kern_pos)
+    # if kz>k_max, the zeta_neg part vanishes
+    if k_max-kz+1>0:
+        kz_max_lim2=k_max+1
+        zeta_neg_k=zeta[kz_max_lim1:kz_max_lim2,\
+                                 ky_min_lim:ky_max_lim,\
+                                 kx_min_lim:kx_max_lim].ravel()
 
-                # if kz>k_max, the zeta_neg part vanishes
-                if k_max-kz+1>0:
-                    kz_max_lim2=k_max+1
-                    zeta_neg_k=zeta[kz_max_lim1:kz_max_lim2,\
-                                             ky_min_lim:ky_max_lim,\
-                                             kx_min_lim:kx_max_lim].ravel()
+        kk_neg_k   =k_modulus   [kz_max_lim1:kz_max_lim2,\
+                                 ky_min_lim:ky_max_lim,\
+                                 kx_min_lim:kx_max_lim].ravel()
 
-                    kk_neg_k   =k_modulus   [kz_max_lim1:kz_max_lim2,\
-                                             ky_min_lim:ky_max_lim,\
-                                             kx_min_lim:kx_max_lim].ravel()
+        zeta_neg_kmk=zeta[1:k_max-kz+1,N-ky_max_lim:N-ky_min_lim,N-kx_max_lim:N-kx_min_lim].ravel()
 
-                    zeta_neg_kmk=zeta[1:k_max-kz+1,N-ky_max_lim:N-ky_min_lim,N-kx_max_lim:N-kx_min_lim].ravel()
+        kk_neg_kmk   =k_modulus   [1:k_max-kz+1,N-ky_max_lim:N-ky_min_lim,N-kx_max_lim:N-kx_min_lim].ravel()
 
-                    kk_neg_kmk   =k_modulus   [1:k_max-kz+1,N-ky_max_lim:N-ky_min_lim,N-kx_max_lim:N-kx_min_lim].ravel()
-
-                    kern_neg=kern(kk_neg_k,kk_neg_kmk\
-                                         ,k_norm,kern_arg1,kern_arg2,k1,k3,dk,dk3,dk12,k3sizes_cumsum)
-                    
-                    Int[kz,ky,kx]+=I_pos+2*np.nansum(np.conjugate(zeta_neg_kmk)\
-                                             *zeta_neg_k*kern_neg)
-                else:
-                    Int[kz,ky,kx]+=I_pos
+        kern_neg=kern(kk_neg_k,kk_neg_kmk\
+                             ,k_norm,kern_arg1,kern_arg2,k1,k3,dk,dk3,dk12,k3sizes_cumsum)
+        
+        Int[kz,ky,kx]+=I_pos+2*np.nansum(np.conjugate(zeta_neg_kmk)\
+                                 *zeta_neg_k*kern_neg)
+    else:
+        Int[kz,ky,kx]+=I_pos
     return Int
 
-@jit(nopython=Nopython,fastmath=True,parallel=params.paral)
-def I2_LLout(Int,N,xidx,yidx,zidx,k_modulus,k_max,zeta,kern,kern_arg1,kern_arg2,k1,k3,dk,dk3,dk12,k3sizes_cumsum):
-    Nd2=N//2
-    for iikx in prange(len(xidx)):
-        if iikx%10==0: print(iikx)
-        kx=xidx[iikx]
-        for iiky in prange(len(yidx)):
-            ky=yidx[iiky]
-            for iikz in prange(len(zidx)):
-                kz=zidx[iikz]
+@jit(nopython=Nopython,fastmath=True)
+def I2_LLout(Int,N,Nd2,kx,ky,kz,k_modulus,k_max,zeta,kern,kern_arg1,kern_arg2,k1,k3,dk,dk3,dk12,k3sizes_cumsum):
+    '''Computes the contribution of all point outside the grid, ie periodicity, given an LL scheme
+    '''
+    k_norm=k_modulus[kz,ky,kx]
 
-                k_norm=k_modulus[kz,ky,kx]
+    kz_min_lim =max(0,kz-k_max)
+    kz_max_lim1=min(kz+1,k_max+1)
+    kz_max_lim2=kz+1
 
-                kz_min_lim =max(0,kz-k_max)
-                kz_max_lim1=min(kz+1,k_max+1)
-                kz_max_lim2=kz+1
+    kx_min_lim=max(N//2-k_max,kx-k_max)
+    kx_max_lim=min(kx+k_max+1,N//2+k_max+1)
+    ky_min_lim=max(N//2-k_max,ky-k_max)
+    ky_max_lim=min(ky+k_max+1,N//2+k_max+1)
 
-                kx_min_lim=max(N//2-k_max,kx-k_max)
-                kx_max_lim=min(kx+k_max+1,N//2+k_max+1)
-                ky_min_lim=max(N//2-k_max,ky-k_max)
-                ky_max_lim=min(ky+k_max+1,N//2+k_max+1)
+    kym1=-ky_min_lim+ky
+    kym2= ky_max_lim-ky-1
+    kxm1=-kx_min_lim+kx
+    kxm2= kx_max_lim-kx-1
 
-                kym1=-ky_min_lim+ky
-                kym2= ky_max_lim-ky-1
-                kxm1=-kx_min_lim+kx
-                kxm2= kx_max_lim-kx-1
-
-                Int[kz,ky,kx]+=I2_out(N,kx,ky,kz,k_modulus,k_max,zeta,kern,kern_arg1,kern_arg2,k1,k3,dk,dk3,dk12,\
-                        Nd2,k_norm,kz_min_lim,kz_max_lim1,kz_max_lim2,kx_min_lim,kx_max_lim,ky_min_lim,\
-                        ky_max_lim,kym1,kym2,kxm1,kxm2,k3sizes_cumsum)
+    Int[kz,ky,kx]+=I2_out(N,kx,ky,kz,k_modulus,k_max,zeta,kern,kern_arg1,kern_arg2,k1,k3,dk,dk3,dk12,\
+            Nd2,k_norm,kz_min_lim,kz_max_lim1,kz_max_lim2,kx_min_lim,kx_max_lim,ky_min_lim,\
+            ky_max_lim,kym1,kym2,kxm1,kxm2,k3sizes_cumsum)
     return Int
 
 
-@jit(nopython=Nopython,fastmath=True,parallel=params.paral)
-def I2_SL(Int,N,xidx,yidx,zidx,k_modulus,k_max,zeta,kern,kern_arg1,kern_arg2,k1,k3,dk,dk3,dk12,k3sizes_cumsum):
+@jit(nopython=Nopython,fastmath=True)
+def I2_SL(Int,N,Nd2,kx,ky,kz,k_modulus,k_max,zeta,kern,kern_arg1,kern_arg2,k1,k3,dk,dk3,dk12,k3sizes_cumsum):
     '''
         Compute SL integral, see function I2_LL() for description of inputs
         
@@ -890,113 +895,142 @@ def I2_SL(Int,N,xidx,yidx,zidx,k_modulus,k_max,zeta,kern,kern_arg1,kern_arg2,k1,
                           +np.nansum(np.conjugate(zeta_neg_kmk)     *zeta_neg_k            *kern_bis_neg)\
                           +np.nansum(             zeta_d_kmk        *np.conjugate(zeta_d_k)*kern_bis_d))
         '''
-    Nd2=N//2
-    for iikx in prange(len(xidx)):
-        if iikx%10==0: print(iikx)
-        kx=xidx[iikx]
-        for iiky in prange(len(yidx)):
-            ky=yidx[iiky]
-            for iikz in prange(len(zidx)):
-                kz=zidx[iikz]
+    k_norm=k_modulus[kz,ky,kx]
 
-                k_norm=k_modulus[kz,ky,kx]
+    kz_min_lim=max(0,kz-k_max)
+    kz_max_lim1=min(kz+k_max+1,Nd2+1)
+    kz_max_lim2=kz+1
 
-                kz_min_lim=max(0,kz-k_max)
-                kz_max_lim1=min(kz+k_max+1,Nd2+1)
-                kz_max_lim2=kz+1
+    kx_min_lim=max(0,kx-k_max)
+    kx_max_lim=min(kx+k_max+1,N)
+    ky_min_lim=max(0,ky-k_max)
+    ky_max_lim=min(ky+k_max+1,N)
 
-                kx_min_lim=max(0,kx-k_max)
-                kx_max_lim=min(kx+k_max+1,N)
-                ky_min_lim=max(0,ky-k_max)
-                ky_max_lim=min(ky+k_max+1,N)
+    kym1=-ky_min_lim+ky
+    kym2= ky_max_lim-ky-1
+    kxm1=-kx_min_lim+kx
+    kxm2= kx_max_lim-kx-1
 
-                kym1=-ky_min_lim+ky
-                kym2= ky_max_lim-ky-1
-                kxm1=-kx_min_lim+kx
-                kxm2= kx_max_lim-kx-1
+    I_out=I2_out(N,kx,ky,kz,k_modulus,k_max,zeta,kern,kern_arg1,kern_arg2,k1,k3,dk,dk3,dk12,\
+           Nd2,k_norm,kz_min_lim,kz_max_lim1,kz_max_lim2,kx_min_lim,kx_max_lim,ky_min_lim,\
+           ky_max_lim,kym1,kym2,kxm1,kxm2,k3sizes_cumsum)
 
-                I_out=I2_out(N,kx,ky,kz,k_modulus,k_max,zeta,kern,kern_arg1,kern_arg2,k1,k3,dk,dk3,dk12,\
-                        Nd2,k_norm,kz_min_lim,kz_max_lim1,kz_max_lim2,kx_min_lim,kx_max_lim,ky_min_lim,\
-                        ky_max_lim,kym1,kym2,kxm1,kxm2,k3sizes_cumsum)
+    zeta_pos_k=np.copy(zeta[kz_min_lim:kz_max_lim2,\
+                                     ky_min_lim:ky_max_lim,
+                                     kx_min_lim:kx_max_lim]).ravel()
+    kk_pos_k=k_modulus[kz_min_lim:kz_max_lim2,\
+                       ky_min_lim:ky_max_lim,\
+                       kx_min_lim:kx_max_lim].ravel()
 
-                zeta_pos_k=np.copy(zeta[kz_min_lim:kz_max_lim2,\
-                                                 ky_min_lim:ky_max_lim,
-                                                 kx_min_lim:kx_max_lim]).ravel()
-                kk_pos_k=k_modulus[kz_min_lim:kz_max_lim2,\
-                                   ky_min_lim:ky_max_lim,\
-                                   kx_min_lim:kx_max_lim].ravel()
+    zeta_neg_k=np.copy(zeta[kz_max_lim2:kz_max_lim1,ky_min_lim:ky_max_lim,kx_min_lim:kx_max_lim]).ravel()
+    kk_neg_k  =k_modulus[kz_max_lim2:kz_max_lim1,ky_min_lim:ky_max_lim,kx_min_lim:kx_max_lim].ravel()
 
-                zeta_neg_k=np.copy(zeta[kz_max_lim2:kz_max_lim1,ky_min_lim:ky_max_lim,kx_min_lim:kx_max_lim]).ravel()
-                kk_neg_k  =k_modulus[kz_max_lim2:kz_max_lim1,ky_min_lim:ky_max_lim,kx_min_lim:kx_max_lim].ravel()
+    kzlower= k_max+kz+1-kz_max_lim1 
 
-                kzlower= k_max+kz+1-kz_max_lim1 
+    zeta_pos_kmk =np.copy(zeta[:kz_max_lim2-kz_min_lim,\
+                                      Nd2-kym2:Nd2+kym1+1,\
+                                      Nd2-kxm2:Nd2+kxm1+1][::-1,::-1,::-1]).ravel()
+    kk_pos_kmk    =        k_modulus   [:kz_max_lim2-kz_min_lim,\
+                                      Nd2-kym2:Nd2+kym1+1,\
+                                      Nd2-kxm2:Nd2+kxm1+1][::-1,::-1,::-1].ravel()
+    zeta_neg_kmk =np.copy(zeta[1:k_max+1-kzlower,\
+                                      Nd2-kym1:Nd2+kym2+1,
+                                      Nd2-kxm1:Nd2+kxm2+1]).ravel()
+    kk_neg_kmk    =        k_modulus   [1:k_max+1-kzlower,\
+                                      Nd2-kym1:Nd2+kym2+1,\
+                                      Nd2-kxm1:Nd2+kxm2+1].ravel()
 
-                zeta_pos_kmk =np.copy(zeta[:kz_max_lim2-kz_min_lim,\
-                                                  Nd2-kym2:Nd2+kym1+1,\
-                                                  Nd2-kxm2:Nd2+kxm1+1][::-1,::-1,::-1]).ravel()
-                kk_pos_kmk    =        k_modulus   [:kz_max_lim2-kz_min_lim,\
-                                                  Nd2-kym2:Nd2+kym1+1,\
-                                                  Nd2-kxm2:Nd2+kxm1+1][::-1,::-1,::-1].ravel()
-                zeta_neg_kmk =np.copy(zeta[1:k_max+1-kzlower,\
-                                                  Nd2-kym1:Nd2+kym2+1,
-                                                  Nd2-kxm1:Nd2+kxm2+1]).ravel()
-                kk_neg_kmk    =        k_modulus   [1:k_max+1-kzlower,\
-                                                  Nd2-kym1:Nd2+kym2+1,\
-                                                  Nd2-kxm1:Nd2+kxm2+1].ravel()
+    if kz-k_max<k_max+1:
+        
+        if Nd2-2*k_max<=kx<Nd2+2*k_max+1 and Nd2-2*k_max<=ky<Nd2+2*k_max+1:
+            kxupper=min(kx_max_lim,k_max+Nd2+1)-kx_min_lim
+            kxlower=max(kx_min_lim,-k_max+Nd2)-kx_min_lim
+            kyupper=min(ky_max_lim,k_max+Nd2+1)-ky_min_lim
+            kylower=max(ky_min_lim,-k_max+Nd2)-ky_min_lim
 
-                if kz-k_max<k_max+1:
-                    
-                    if Nd2-2*k_max<=kx<Nd2+2*k_max+1 and Nd2-2*k_max<=ky<Nd2+2*k_max+1:
+            kzupper=min(2*k_max-kz+1,k_max+1)
 
-                        kxupper=min(Nd2+k_max-(N-kx_max_lim)+1,kx_max_lim-kx_min_lim)
-                        kxlower=max(Nd2-k_max-(N-kx_max_lim),0)
-                        kyupper=min(Nd2+k_max-(N-ky_max_lim)+1,ky_max_lim-ky_min_lim)
-                        kylower=max(Nd2-k_max-(N-ky_max_lim),0)
-                        kzupper=min(2*k_max-kz+1,k_max+1)
+            zeta_pos_k.reshape((kz_max_lim2-kz_min_lim,\
+                                    ky_max_lim-ky_min_lim,\
+                                    kx_max_lim-kx_min_lim))[:kzupper,kylower:kyupper,kxlower:kxupper]=0
+            if kz<k_max+1:
+                zeta_neg_k.reshape((kz_max_lim1-kz_max_lim2,ky_max_lim-ky_min_lim,kx_max_lim-kx_min_lim))\
+                                [:k_max-kz,kylower:kyupper,kxlower:kxupper]=0 
 
-                        zeta_pos_k.reshape((kz_max_lim2-kz_min_lim,\
-                                                ky_max_lim-ky_min_lim,\
-                                                kx_max_lim-kx_min_lim))[:kzupper,kylower:kyupper,kxlower:kxupper]=0
-                        if kz<k_max+1:
-                            zeta_neg_k.reshape((kz_max_lim1-kz_max_lim2,ky_max_lim-ky_min_lim,kx_max_lim-kx_min_lim))\
-                                            [:k_max-kz,kylower:kyupper,kxlower:kxupper]=0 
+    kern_bis_pos=kern(kk_pos_k,kk_pos_kmk,k_norm,kern_arg1,kern_arg2,k1,k3,dk,dk3,dk12,k3sizes_cumsum)
 
-                kern_bis_pos=kern(kk_pos_k,kk_pos_kmk,k_norm,kern_arg1,kern_arg2,k1,k3,dk,dk3,dk12,k3sizes_cumsum)
+    if kz==Nd2:
+        Int[kz,ky,kx]+=(np.nansum(zeta_pos_kmk*zeta_pos_k*kern_bis_pos))+I_out#*dk**3
+    elif kz-k_max>=0:
+        kern_bis_neg=kern(kk_neg_k,kk_neg_kmk      ,k_norm,kern_arg1,kern_arg2,k1,k3,dk,dk3,dk12,k3sizes_cumsum)
+        Int[kz,ky,kx]+=(np.nansum(zeta_pos_kmk*zeta_pos_k*kern_bis_pos)\
+           +np.nansum(np.conjugate(zeta_neg_kmk)*zeta_neg_k*kern_bis_neg))+I_out
+    else:
+        kern_bis_neg=kern(kk_neg_k,kk_neg_kmk      ,k_norm,kern_arg1,kern_arg2,k1,k3,dk,dk3,dk12,k3sizes_cumsum)
 
-                if kz==Nd2:
-                    Int[kz,ky,kx]=(np.nansum(zeta_pos_kmk*zeta_pos_k*kern_bis_pos))+I_out#*dk**3
-                elif kz-k_max>=0:
-                    kern_bis_neg=kern(kk_neg_k,kk_neg_kmk      ,k_norm,kern_arg1,kern_arg2,k1,k3,dk,dk3,dk12,k3sizes_cumsum)
-                    Int[kz,ky,kx]=(np.nansum(zeta_pos_kmk*zeta_pos_k*kern_bis_pos)\
-                       +np.nansum(np.conjugate(zeta_neg_kmk)*zeta_neg_k*kern_bis_neg))+I_out
-                else:
-                    kern_bis_neg=kern(kk_neg_k,kk_neg_kmk      ,k_norm,kern_arg1,kern_arg2,k1,k3,dk,dk3,dk12,k3sizes_cumsum)
+        zeta_d_k  =np.copy(zeta[1:k_max-kz+1,N-ky_max_lim:N-ky_min_lim,N-kx_max_lim:N-kx_min_lim].ravel())
+        zeta_d_kmk =np.copy(zeta[1:k_max-kz+1,Nd2-kym2:Nd2+kym1+1,Nd2-kxm2:Nd2+kxm1+1]).ravel()
+        kk_d_k  =k_modulus[1:k_max-kz+1,N-ky_max_lim:N-ky_min_lim,N-kx_max_lim:N-kx_min_lim].ravel()
+        kk_d_kmk=k_modulus[1:k_max-kz+1,Nd2-kym2:Nd2+kym1+1,Nd2-kxm2:Nd2+kxm1+1].ravel()
+        kern_bis_d=kern(kk_d_k,kk_d_kmk,k_norm,kern_arg1,kern_arg2,k1,k3,dk,dk3,dk12,k3sizes_cumsum)
 
-                    zeta_d_k  =np.copy(zeta[1:k_max-kz+1,N-ky_max_lim:N-ky_min_lim,N-kx_max_lim:N-kx_min_lim].ravel())
-                    zeta_d_kmk =np.copy(zeta[1:k_max-kz+1,Nd2-kym2:Nd2+kym1+1,Nd2-kxm2:Nd2+kxm1+1]).ravel()
-                    kk_d_k  =k_modulus[1:k_max-kz+1,N-ky_max_lim:N-ky_min_lim,N-kx_max_lim:N-kx_min_lim].ravel()
-                    kk_d_kmk=k_modulus[1:k_max-kz+1,Nd2-kym2:Nd2+kym1+1,Nd2-kxm2:Nd2+kxm1+1].ravel()
-                    kern_bis_d=kern(kk_d_k,kk_d_kmk,k_norm,kern_arg1,kern_arg2,k1,k3,dk,dk3,dk12,k3sizes_cumsum)
+        if Nd2-2*k_max<=kx<Nd2+2*k_max+1 and Nd2-2*k_max<=ky<Nd2+2*k_max+1:
+            kxupper=min(Nd2+k_max-(N-kx_max_lim)+1,kx_max_lim-kx_min_lim)
+            kxlower=max(Nd2-k_max-(N-kx_max_lim),0)
+            kyupper=min(Nd2+k_max-(N-ky_max_lim)+1,ky_max_lim-ky_min_lim)
+            kylower=max(Nd2-k_max-(N-ky_max_lim),0)
+            kzupper=min(2*k_max-kz+1,k_max+1)
+            
+            zeta_d_k.reshape((k_max-kz,ky_max_lim-ky_min_lim,kx_max_lim-kx_min_lim))\
+                                   [:kzupper,kylower:kyupper,kxlower:kxupper]=0 
 
-                    if Nd2-2*k_max<=kx<Nd2+2*k_max+1 and Nd2-2*k_max<=ky<Nd2+2*k_max+1:
-                        kxupper=min(Nd2+k_max-(N-kx_max_lim)+1,kx_max_lim-kx_min_lim)
-                        kxlower=max(Nd2-k_max-(N-kx_max_lim),0)
-                        kyupper=min(Nd2+k_max-(N-ky_max_lim)+1,ky_max_lim-ky_min_lim)
-                        kylower=max(Nd2-k_max-(N-ky_max_lim),0)
-                        kzupper=min(2*k_max-kz+1,k_max+1)
-                        
-                        zeta_d_k.reshape((k_max-kz,ky_max_lim-ky_min_lim,kx_max_lim-kx_min_lim))\
-                                               [:kzupper,kylower:kyupper,kxlower:kxupper]=0 
-
-                    Int[kz,ky,kx]=(np.nansum(zeta_pos_kmk*zeta_pos_k*kern_bis_pos)\
-                              +np.nansum(np.conjugate(zeta_neg_kmk)*zeta_neg_k*kern_bis_neg)\
-                              +np.nansum(zeta_d_kmk*np.conjugate(zeta_d_k)*kern_bis_d))+I_out
+        Int[kz,ky,kx]+=(np.nansum(zeta_pos_kmk*zeta_pos_k*kern_bis_pos)\
+                      +np.nansum(np.conjugate(zeta_neg_kmk)*zeta_neg_k*kern_bis_neg)\
+                      +np.nansum(zeta_d_kmk*np.conjugate(zeta_d_k)*kern_bis_d))+I_out
     return Int
 
+@jit(nopython=Nopython,fastmath=True,parallel=params.paral)
+def looping(fct,out,Int,N,xidx,yidx,zidx,k_modulus,k_max,zeta,kern,kern_arg1,kern_arg2,k1,k3,dk,dk3,dk12,k3sizes_cumsum):
+    '''Function that contains the 3-dimentional loops.
+        input: 
+            -fct=I2_SL or I2_LL or I2_LLout
+            -if out==False:
+                computes the fct at all (xidx*yidx*zidx) points
+             else:
+                computes the fct at all (xidx*yidx*zidx) points except if those points are in the cutoff
+    '''
+
+    Nd2=N//2
+    if out:
+        for iikx in prange(len(xidx)):
+            if iikx%10==0: print(iikx)
+            kx=xidx[iikx]
+            for iiky in prange(len(yidx)):
+                ky=yidx[iiky]
+                for iikz in prange(len(zidx)):
+                    kz=zidx[iikz]
+                    if Nd2-k_max-1<kx<Nd2+k_max+1 and N//2-k_max-1<ky<Nd2+k_max+1 and kz<k_max+1:
+                        continue
+                    else:
+                        fct(Int,N,Nd2,kx,ky,kz\
+                        ,k_modulus,k_max,zeta,kern,kern_arg1,kern_arg2,k1,k3,dk,dk3,dk12,k3sizes_cumsum)
+    else:
+        for iikx in prange(len(xidx)):
+            if iikx%10==0: print(iikx)
+            kx=xidx[iikx]
+            for iiky in prange(len(yidx)):
+                ky=yidx[iiky]
+                for iikz in prange(len(zidx)):
+                    kz=zidx[iikz]
+                    fct(Int,N,Nd2,kx,ky,kz\
+                    ,k_modulus,k_max,zeta,kern,kern_arg1,kern_arg2,k1,k3,dk,dk3,dk12,k3sizes_cumsum)
+
+    return Int
+ 
 def integre(which,klin,N,k_max,kmax,klin_grid,zeta,kern,kern_arg1,kern_arg2,k1,k3,dk,dk3,dk12,k3sizes_cumsum):
     '''
         inputs:
-        -which: whether it is 'TT','LL', 'SL' or 'SS' to be computed. The 'SS' is not implemented yet
+        -which: whether it is 'TT','LL','SL','LL+','SL+' to be computed. The 'SS' is not implemented yet
         -klin: one dimensional list of k coordinate to be considered
         -N: size of the grid
         -k_max: cut-off in h/Mpc^-1
@@ -1017,6 +1051,23 @@ def integre(which,klin,N,k_max,kmax,klin_grid,zeta,kern,kern_arg1,kern_arg2,k1,k
         -kz=0,ky>N//2
         -kz=0,ky=N//2,kx>N//2
         '''
+    def limit(a,b,w):
+        mask =np.logical_and(np.abs(klin)>=a, np.abs(klin)<b)
+        maskz=np.logical_and(np.abs(klin[N//2:])>=a, np.abs(klin[N//2:])<b)
+        if w=='vol':
+            xidx=np.where(mask)[0]
+            yidx=xidx
+            zidx=np.where(np.logical_and(maskz,klin[N//2:]>10**-15))[0]
+        elif w=='plan':
+            xidx=np.where(mask)[0]
+            yidx=np.where(np.logical_and(mask,klin>0))[0]
+            zidx=np.arange(1)
+        elif w=='line':
+            xidx=np.where(np.logical_and(mask,klin>0))[0]
+            yidx=np.array([N//2])
+            zidx=np.arange(1)
+        return xidx,yidx,zidx
+
     Int=np.zeros(zeta.shape,dtype=np.complex64)
     k_modulus=np.sqrt(klin_grid[0][N//2:]**2+klin_grid[1]**2+klin_grid[2]**2)
     k_max=int(np.where(klin==k_max)[0])-N//2
@@ -1024,76 +1075,51 @@ def integre(which,klin,N,k_max,kmax,klin_grid,zeta,kern,kern_arg1,kern_arg2,k1,k
     print(' k_lambda_index={}'.format(k_max))
     klin=np.arange(len(klin))-N//2
 
-    if which=='SL':
-        print(' integre SL ...')
-        for opt in range(3):
-            if opt==0:
-                print('     compute volume z in [1,N//2+1]')
-                xidx=np.arange(N)
-                yidx=np.arange(N)
-                zidx=np.arange(1,N//2+1)
-            elif opt==1:
-                print('     compute plan z=0')
-                xidx=np.arange(N)
-                yidx=np.arange(N//2+1,N)
-                zidx=np.arange(1)
-            elif opt==2:
-                print('     compute line z=0 y=N//2')
-                xidx=np.arange(N//2+1,N)
-                yidx=np.array([N//2])
-                zidx=np.arange(1)
+    if which in ['SL','SL+'] :
+        print(' integre {} ...'.format(which))
+        for opt in ['vol','plan','line']:
+            print('     compute volume z {}'.format(opt))
+            xidx,yidx,zidx=limit(0,kmax+1,opt)
+            xidxp,yidxp,zidxp=limit(0,k_max+1,opt)
             print('     Number of step {}'.format(len(xidx)))
+            if which=='SL':
+                looping(I2_SL,False,Int,N,xidx,yidx,zidx,k_modulus,k_max,zeta,kern,kern_arg1,kern_arg2,k1,k3,dk,dk3,dk12,k3sizes_cumsum)
+            else:
+                looping(I2_SL,True,Int,N,xidx,yidx,zidx,k_modulus,k_max,zeta,kern,kern_arg1,kern_arg2,k1,k3,dk,dk3,dk12,k3sizes_cumsum)
 
-            I2_SL(Int,N,xidx,yidx,zidx,k_modulus,k_max,zeta,kern,kern_arg1,kern_arg2,k1,k3,dk,dk3,dk12,k3sizes_cumsum)
-    else:
+    elif which in ['LL','TT']:
         if which=='TT':
             print(' integre TT ...')
-            upper=kmax*2+1
+            upper=kmax+1
         elif which=='LL':
             print(' integre LL ...')
             upper=k_max*2+1
-        elif which=='LL+':
-            print(' integre LL+ ...')
-            upper=k_max*2+1
 
-        xidx1=np.where(np.abs(klin)<=upper)[0]
-        yidx1=np.where(np.abs(klin)<=upper)[0]
-        zidx1=np.where(np.logical_and(klin[N//2:]<=upper,klin[N//2:]>10**-15))[0]
-
-        xidx2=np.where(np.abs(klin)<=upper)[0]
-        yidx2=np.where(np.logical_and(np.abs(klin)<=upper,klin>0))[0]
-        zidx2=np.arange(1)
-
-        xidx3=np.where(np.logical_and(np.abs(klin)<=upper,klin>0))[0]
-        yidx3=np.array([N//2])
-        zidx3=np.arange(1)
-
-        for opt in range(3):
-            if opt==0:
-                xidx=xidx1
-                yidx=yidx1
-                zidx=zidx1
-                print('     compute volume z in [1,N//2+1]')
-            elif opt==1:
-                print('     compute plan z=0')
-                xidx=xidx2
-                yidx=yidx2
-                zidx=zidx2
-            elif opt==2:
-                print('     compute line z=0 y=N//2')
-                xidx=xidx3
-                yidx=yidx3
-                zidx=zidx3
-            print('     Number of step {}'.format(len(xidx)))
+        for opt in ['vol','plan','line']:
+            print('     compute volume z {}'.format(opt))
+            xidx, yidx, zidx=limit(0,upper,opt)
 
             if  which=='LL':
-                I2_LL(Int,N,xidx,yidx,zidx,k_modulus,k_max,zeta,kern,kern_arg1,kern_arg2,k1,k3,dk,dk3,dk12,k3sizes_cumsum)
-            elif  which=='TT' or which=='LL+':
-                I2_LL(Int,N,xidx,yidx,zidx,k_modulus,kmax,zeta,kern,kern_arg1,kern_arg2,k1,k3,dk,dk3,dk12,k3sizes_cumsum)
-                I2_LLout(Int,N,xidx,yidx,zidx,k_modulus,kmax,zeta,kern,kern_arg1,kern_arg2,k1,k3,dk,dk3,dk12,k3sizes_cumsum)
-            else:
-                print('what ?')
-                return 0
+                print('     Number of step {}'.format(len(xidx)))
+                looping(I2_LL,False,Int,N,xidx,yidx,zidx,k_modulus,k_max,zeta,kern,kern_arg1,kern_arg2,k1,k3,dk,dk3,dk12,k3sizes_cumsum)
+            elif  which=='TT':
+                print('     Number of step [{},{}]'.format(len(xidx),len(xidx)))
+                looping(I2_LL   ,False,Int,N,xidx,yidx,zidx,k_modulus,kmax,zeta,kern,kern_arg1,kern_arg2,k1,k3,dk,dk3,dk12,k3sizes_cumsum)
+                looping(I2_LLout,False,Int,N,xidx,yidx,zidx,k_modulus,kmax,zeta,kern,kern_arg1,kern_arg2,k1,k3,dk,dk3,dk12,k3sizes_cumsum)
+
+    elif which=='LL+':
+        print(' integre LL+ ...')
+
+        for opt in ['vol','plan','line']:
+            print('     compute volume z in {}'.format(opt))
+            xidx, yidx, zidx=limit(0,k_max*2+1,opt)
+            xidxp, yidxp, zidxp=limit(0,k_max+1,opt)
+            print('     Number of step [{},{},{}]'.format(len(xidx),len(xidxp),len(xidxp)))
+
+            looping(I2_LL,True,Int,N,xidx,yidx,zidx,k_modulus,k_max,zeta,kern,kern_arg1,kern_arg2,k1,k3,dk,dk3,dk12,k3sizes_cumsum)
+
+            looping(I2_LL,False,Int,N,xidxp,yidxp,zidxp,k_modulus,kmax,zeta,kern,kern_arg1,kern_arg2,k1,k3,dk,dk3,dk12,k3sizes_cumsum)
+            looping(I2_LLout,False,Int,N,xidxp,yidxp,zidxp,k_modulus,kmax,zeta,kern,kern_arg1,kern_arg2,k1,k3,dk,dk3,dk12,k3sizes_cumsum)
 
     return Int/N**3
 
@@ -1153,11 +1179,17 @@ def fft(field):
 
     return np.fft.irfftn(new_field.transpose(),(N-1,N-1,N-1)) 
 
-def read_h5(run,field):
-    f1 = h5py.File('{}/{}_{}1_0.h5'.format(params.gev_path,run,field), 'r')
-    f2 = h5py.File('{}/{}_{}2_0.h5'.format(params.gev_path,run,field), 'r')
-    dat1=np.array(f1['data'],dtype=np.float32)
-    dat2=np.array(f2['data'],dtype=np.float32)
+def read_h5(field,filename=''):
+    if len(filename)==0:
+        f1 = h5py.File(params.gev_path+params.key+'_{}1_{}.h5'.format(field,0), 'r')
+        f2 = h5py.File(params.gev_path+params.key+'_{}2_{}.h5'.format(field,0), 'r')
+        dat1=np.array(f1['data'],dtype=np.float32)
+        dat2=np.array(f2['data'],dtype=np.float32)
+    else:
+        f1 = h5py.File(params.gev_path+filename+'1_0.h5', 'r')
+        f2 = h5py.File(params.gev_path+filename+'2_0.h5', 'r')
+        dat1=np.array(f1['data'],dtype=np.float32)
+        dat2=np.array(f2['data'],dtype=np.float32)
     return dat1,dat2
 
 ####################################################################################### 
@@ -1242,6 +1274,28 @@ def computePower(filename):
     Pkpyl = PKL.Pk(delta1, BoxSize, axis, MAS, threads, verbose)
     np.savetxt(params.song_path+'ps_'+filename+'.dat',np.vstack([Pkpyl.k3D, Pkpyl.Pk[:,0]]).T)
 
+
+def pk2_analytic(kk1p,t,kk1,transcdm,transphi,dTdk,flatidx,k1,k3,dk,dk3,dk12,k3sizes_cumsum):
+
+    kk2=np.sqrt(kk1**2+kk1p**2-2*kk1*kk1p*np.cos(t))
+    K=Kernel_Pp(kk1p ,kk2 ,kk1 ,transphi,dTdk ,k1,k3,   dk,     dk3,     dk12,k3sizes_cumsum)
+
+    P1 = np.interp(kk1p,transcdm[0],transcdm[1])**2*params.A_s*(kk1p/(params.k_pivot/params.h))**(params.n_s-1)/kk1p**3*2*np.pi**2
+    P2 = np.interp(kk2 ,transcdm[0],transcdm[1])**2*params.A_s*(kk2 /(params.k_pivot/params.h))**(params.n_s-1)/kk2 **3*2*np.pi**2
+
+    return 4*np.pi/(2*np.pi)**3 * kk1p**2*np.sin(t) * K**2 * P1*P2
+
+def int_pk2(kk1,transcdm,transphi,dTdk,flatidx,k1,k3,dk,dk3,dk12,k3sizes_cumsum):
+    from scipy.integrate import nquad,dblquad
+    I=[]
+    for ki in kk1:
+        print(ki)
+        I.append(dblquad(pk2_analytic,params.kmin,params.kmin*(N//2+1) ,0,np.pi,\
+                args=(ki,transcdm,transphi,dTdk,flatidx,k1,k3,dk,dk3,dk12,k3sizes_cumsum))[0])
+    np.savetxt(params.song_path+'ps_th_.dat',np.vstack([kk1, I]))
+    return I
+
+
 ########################################################################################################################## Main
 
 def main():
@@ -1278,66 +1332,82 @@ def main():
     else:
         params.key= params.run+'_N{}_kmin{:.1e}_kmax{:.1e}_kl{:.1e}'.format(N,params.kmin,kmax,klambda)
 
+    params.key+=params.addkey
+
     if len(params.source)==0:
-        params.key_song='N1_{}_smart_kmin{:.1e}_kmax{:.1e}'.format(params.N_song_k12,params.kmin,params.kmax_song)
+        if params.interp in ['lin','nearest']:
+            params.key_song='N1_{}_N3_{}_kmin{:.1e}_kmax{:.1e}'.format(params.N_song_k12,params.N_song_k3,params.kmin,params.kmax_song)
+        else:
+            params.key_song='N1_{}_smart_kmin{:.1e}_kmax{:.1e}'.format(params.N_song_k12,params.kmin,params.kmax_song)
     else:
         params.key_song=params.source
     
     if params.run=='song':
-        song,k1,k2,k3,flatidx,dk12,dk3,k3sizes_cumsum=song_main(hkmax,hkmin,'lin',True)  # Get song outputs
-    else:
-        song,k1,k2,k3,flatidx,dk12,dk3,k3sizes_cumsum=song_main(hkmax,hkmin,'lin',False)  # Get song outputs
+        song,k1,k2,k3,flatidx,dk12,dk3,k3sizes_cumsum=song_main(hkmax,hkmin,True)  # Get song outputs
 
-    if params.run=='kernel':
+    elif params.run=='kernel':
+        song,k1,k2,k3,flatidx,dk12,dk3,k3sizes_cumsum=song_main(hkmax,hkmin,False)  # Get song outputs
         kernel_dict=song2xi(song,k1,k2,k3,flatidx,H,k3sizes_cumsum)             
         for f in params.field:                                                      
             np.save(params.song_path+params.key_song+'_{}'.format(f),kernel_dict[f])
 
-    elif params.run in ['d3','d3+','SL','LL','TT','LL+']:
+    elif params.run in ['d3','d3+','SL','LL','TT','LL+','SL+']:
+        song,k1,k2,k3,flatidx,dk12,dk3,k3sizes_cumsum=song_main(hkmax,hkmin,False)  # Get song outputs
         transcdm,transphi,dTdk=trans()                                       # Get transfer functions and primordial power spectrum 
         k_grid_lin=np.array(np.meshgrid(klin_concat,klin_concat,klin_concat\
                              ,sparse=True,indexing='ij'),dtype=object)       # mode Grid with 'ij' indexing
 
-        for realisation in range(params.N_realization):
-            print('**************************************************')
-            print('realisation {}'.format(realisation))
-            zeta=zeta_realisation(k_grid_lin)                                    # first order stocastic density
+        if params.order==2:
+            if params.field==['delta_song']:
+                kernel_dict={'delta_song':song}
+            else:
+                kernel_dict=song2xi(song,k1,k2,k3,flatidx,H,k3sizes_cumsum)             
 
+            if params.numeric:
+                kern_arg2 = flatidx
+                print('numeric kernel (song) interpolation {}'.format(params.interp))
+                if params.interp=='nearest':
+                    kernel=interp_nearest
+                elif params.interp=='lin':
+                    kernel=interp_lin
+                elif params.interp=='smart':
+                    kernel=interp_linsmart
+                else:
+                    print('interpolation do not exists: lin or nearest')
+            else:
+                print('analytic kernel')
+                kernel=Kernel_analytic
+                kern_arg1,kern_arg2 = transphi,dTdk
+
+        for realisation in range(params.N_realization[0],params.N_realization[1]):
+            print('**************************************************')
+            print('realisation {}/{}'.format(realisation+1,params.N_realization[1]-params.N_realization[0]))
+
+            zeta=zeta_realisation(k_grid_lin)                                    # first order stocastic density
+            #np.save('zeta',zeta)
+            #zeta=np.load('zeta.npy')
             for f in params.field:                                                      #
                 print('computing first order {}'.format(f))
-                f1 = fft(zeta2fields(f,zeta,k_grid_lin,transcdm,transphi))              # first order displacement field
-                hf = h5py.File(params.gev_path+params.key+'_{}1_{}.h5'.format(f,realisation), 'w')  # Save in h5 format 
-                hf.create_dataset('data', data=f1)                                      # 
-                hf.close()                                                              #
 
-            if params.order==2:
-                if params.field==['delta_song']:
-                    kernel_dict={'delta_song':song}
+                if not os.path.isfile(params.gev_path+params.key+'_{}2_{}.h5'.format(f,realisation)) or params.force:
+                    f1 = fft(zeta2fields(f,zeta,k_grid_lin,transcdm,transphi))              # first order displacement field
+                    hf = h5py.File(params.gev_path+params.key+'_{}1_{}.h5'.format(f,realisation), 'w')  # Save in h5 format 
+                    hf.create_dataset('data', data=f1)                                      # 
+                    hf.close()                                                              #
                 else:
-                    kernel_dict=song2xi(song,k1,k2,k3,flatidx,H,k3sizes_cumsum)             
+                    print(params.gev_path+params.key+'_{}2_{}.h5'.format(f,realisation)+' found')
+                    continue
 
-                if params.numeric:
-                    kern_arg2 = flatidx
-                    print('numeric kernel (song) interpolation {}'.format(params.interp))
-                    if params.interp=='nearest':
-                        kernel=interp_nearest
-                    elif params.interp=='lin':
-                        kernel=interp_linsmart
-                    else:
-                        print('interpolation do not exists: lin or nearest')
-                else:
-                    print('analytic kernel')
-                    kernel=Kernel_analytic
-                    kern_arg1,kern_arg2 = transphi,dTdk
-
-                for f in params.field:
+                if params.order==2:
                     print('computing second order {}'.format(f))   
+
                     if params.numeric:
                         kern_arg1 = kernel_dict[f]
 
-                    if params.run in ['SL','LL','TT','LL+']:
+                    if params.run in ['SL','LL','TT','LL+','SL+']:
                         res=integre(params.run,klin_concat,N,klambda,kmax,k_grid_lin,\
                                 zeta,kernel,kern_arg1,kern_arg2,k1,k3,dk,dk3,dk12,k3sizes_cumsum)#Integration
+
                     elif params.run=='d3':
                         f_LL=integre('LL',klin_concat,N,klambda,kmax,k_grid_lin,\
                                 zeta,kernel,kern_arg1,kern_arg2,k1,k3,dk,dk3,dk12,k3sizes_cumsum)#Integration
@@ -1347,7 +1417,7 @@ def main():
                     elif params.run=='d3+':
                         f_LL=integre('LL+',klin_concat,N,klambda,kmax,k_grid_lin,\
                                 zeta,kernel,kern_arg1,kern_arg2,k1,k3,dk,dk3,dk12,k3sizes_cumsum)#Integration
-                        f_SL=integre('SL',klin_concat,N,klambda,kmax,k_grid_lin,\
+                        f_SL=integre('SL+',klin_concat,N,klambda,kmax,k_grid_lin,\
                                 zeta,kernel,kern_arg1,kern_arg2,k1,k3,dk,dk3,dk12,k3sizes_cumsum)#integration
                         res=f_LL+2*f_SL
 
@@ -1355,24 +1425,57 @@ def main():
                     hf.create_dataset('data', data=fft(res))                                           # 
                     hf.close()
 
-    if params.run=='gevolution':
+    elif params.run=='gevolution':
         settings(params.kmin,'msetting.ini',ICg='SONG',disp_file='d3_xi1_0.h5',vel_file='d3_v1_0.h5',pot_file='d3_phi1_0.h5')
         settings(params.kmin,'gsetting.ini',ICg='basic',disp_file='',vel_file='',pot_file='')
 
-    if params.run=='ps' or params.measurement!='':
-        for realisation in range(params.N_realization):
-            filename=params.key+'_{}{}_{}'.format(params.field[0],params.order,realisation)
-            #if not os.path.isfile(params.song_path+'ps_'+filename+'.dat') :
-            computePower(filename)
-            dat=np.loadtxt(params.song_path+'ps_'+filename+'.dat')
-            if realisation==0:
-                ps=dat[:,1]
-            else:
-                ps+=dat[:,1]
-            plt.loglog(dat[:,0],dat[:,1],label='{} order={} N={}'.format(params.measurement,params.order,N))
+    if params.run=='ps' or params.measurement!='' :
+        print('assuming {} realisation'.format(params.N_realization[1]))
 
-        clem1=np.loadtxt('order'+str(params.order)+'.dat')
-        plt.loglog(clem1[:,0],clem1[:,1],label='clem'+str(params.order))
+        if params.measurement=='th':
+            classs = np.loadtxt('gevolution-1.2/class_tk.dat')
+            transcdm = np.array([classs[:,0],classs[:,3]])
+            transphi = np.array([classs[:,0],classs[:,6]])
+            dk=np.diff(np.append(classs[:,0],classs[:,0][-1]*2-classs[:,0][-2]))
+            dT=np.diff(np.append(transphi[1],transphi[1][-1]*2-transphi[1][-2]))
+            dTdk = np.array([classs[:,0],dT/dk])
+            clem1=np.loadtxt('order'+str(params.order)+'.dat')
+            III=int_pk2(clem1[:,0][:1],transcdm,transphi,dTdk,flatidx,k1,k3,dk,dk3,dk12,k3sizes_cumsum)
+            np.save('III',III)
+            plt.loglog(clem1[:,0][:1],III)
+
+            k=np.logspace(-5,0,100) 
+            K=Kernel_Pp(k,1e-5 ,k ,transphi,dTdk ,k1,k3,   dk,     dk3,     dk12,k3sizes_cumsum)
+            plt.semilogx(k,K)
+
+            clem1=np.loadtxt('order'+str(params.order)+'.dat')
+            plt.loglog(clem1[:,0],clem1[:,1],label='clem'+str(params.order))
+            #clem2=np.loadtxt('bigcutoff.dat')
+            #clem3=np.loadtxt('smallcutoff.dat')
+            #plt.loglog(clem2[:,0],clem2[:,1],label='clem'+str(params.order))
+            #plt.loglog(clem3[:,0],clem3[:,1],label='theoretical prediction')
+
+
+        else:
+            for f in params.field:
+                #plt.figure()
+                for realisation in range(params.N_realization[0],params.N_realization[1]):
+                    filename=params.key+'_{}{}_{}'.format(f,params.order,realisation)
+                    computePower(filename)
+                    dat=np.loadtxt(params.song_path+'ps_'+filename+'.dat')
+                    if realisation==0:
+                        ps=dat[:,1]
+                    else:
+                        ps+=dat[:,1]
+                    #plt.loglog(dat[:,0],dat[:,1],label='{} order={} N={}'.format(params.measurement,params.order,N))
+                if params.measurement in ['SL','SL+']:
+                    plt.loglog(dat[:,0],2*ps/params.N_realization[1],label='{} {} order={} N={}'.format(f,params.measurement,params.order,N))
+                else:
+                    plt.loglog(dat[:,0],ps/params.N_realization[1],label='{} {} order={} N={}'.format(f,params.measurement,params.order,N))
+    try:
+        return res
+    except UnboundLocalError:
+        return 0
 
 if __name__ == "__main__":
-    main()
+    r=main()
